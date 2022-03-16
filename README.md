@@ -1,0 +1,69 @@
+# discord-testnet-faucet
+A Discord bot for dispensing testnet tokens.
+
+## Requirements
+
+- python3.8+  
+- gaia v6.0.0+
+- Faucet keys in gaia keyring 
+
+## Installation
+
+1. Install dependencies:
+   
+```
+cosmos-discord-faucet$ python -m venv .env
+cosmos-discord-faucet$ source .env/bin/activate
+cosmos-discord-faucet$ pip install -r requirements.txt
+```
+
+2. [Create Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token) and save its token.
+3. Add the bot token to `config.ini`.
+4. Add the testnet faucet keys to `config.ini` .
+
+## Usage
+
+This bot can be run stand-alone (mostly for testing), or as a service.
+
+### Stand-alone
+
+`python discord_testnet_faucet.py`
+
+- This can be run inside a `tmux` session.
+
+### Service
+
+1. Modify the `discord-testnet-faucet.service` file as appropriate.
+2. Make a copy of `discord-testnet-faucet.service` or create a link to it in `/etc/systemd/system/`.
+3. Enable and start the service:
+```
+systemctl daemon-reload
+systemctl enable discord-faucet-bot.service
+systemctl start discord-faucet-bot.service
+systemctl status discord-faucet-bot.service
+```
+
+## Discord Commands
+
+1. Request tokens through the faucet:  
+`$request [cosmos address] vega|theta`
+- A ✅ means the transaction was successful
+
+2. Request the faucet and node status:  
+`$faucet_status vega|theta`
+
+3. Request the faucet address:  
+`$faucet_address vega|theta`
+
+1. Request information for a specific transaction:  
+`$tx_info [transaction hash ID] vega|theta`
+
+1. Request the address balance:  
+`$balance [cosmos address] vega|theta`  
+
+
+## Acknowledgements
+
+This repo is based on [cosmos-discord-faucet](https://github.com/c29r3/cosmos-discord-faucet):
+- The cosmospy library calls have been replaced by calls to `gaiad` to avoid deprecated endpoints and messages.
+- The address prefix has been switched to `cosmos`.
