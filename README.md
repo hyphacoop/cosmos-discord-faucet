@@ -1,4 +1,4 @@
-# discord-testnet-faucet
+# cosmos-discord-faucet
 A Discord bot for dispensing testnet tokens.
 
 ## Requirements
@@ -19,7 +19,7 @@ cosmos-discord-faucet$ pip install -r requirements.txt
 
 2. [Create Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token) and save its token.
 3. Add the bot token to `config.ini`.
-4. Add the testnet faucet keys to `config.ini` .
+4. Modify the nodes, faucet addresses, and amount to send in `config.ini` .
 
 ## Usage
 
@@ -27,20 +27,20 @@ This bot can be run stand-alone (mostly for testing), or as a service.
 
 ### Stand-alone
 
-`python discord_testnet_faucet.py`
+`python cosmos_discord_faucet.py`
 
 - This can be run inside a `tmux` session.
 
 ### Service
 
-1. Modify the `discord-testnet-faucet.service` file as appropriate.
-2. Make a copy of `discord-testnet-faucet.service` or create a link to it in `/etc/systemd/system/`.
+1. Modify the `cosmos-discord-faucet.service` file as appropriate.
+2. Make a copy of `cosmos-discord-faucet.service` or create a link to it in `/etc/systemd/system/`.
 3. Enable and start the service:
 ```
 systemctl daemon-reload
-systemctl enable discord-faucet-bot.service
-systemctl start discord-faucet-bot.service
-systemctl status discord-faucet-bot.service
+systemctl enable cosmos-discord-faucet.service
+systemctl start cosmos-discord-faucet.service
+systemctl status cosmos-discord-faucet.service
 ```
 
 ## Discord Commands

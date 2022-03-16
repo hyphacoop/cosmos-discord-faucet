@@ -1,0 +1,15 @@
+**List of available commands:**
+1. Request tokens through the faucet:  
+`$request [cosmos address] vega|theta`
+
+2. Request the faucet and node status:  
+`$faucet_status vega|theta`
+
+3. Request the faucet address:  
+`$faucet_address vega|theta`
+
+1. Request information for a specific transaction:  
+`$tx_info [transaction hash ID] vega|theta`
+
+1. Request the address balance:  
+`$balance [cosmos address] vega|theta`  
