@@ -23,7 +23,7 @@ THETA_NODE = str(c["THETA_TESTNET"]["node_url"])
 THETA_CHAIN = str(c["THETA_TESTNET"]["chain_id"])
 THETA_FAUCET_ADDRESS = str(c["THETA_TESTNET"]["faucet_address"])
 
-testnet = {
+testnets = {
     "vega": {
         "node": VEGA_NODE,
         "chain": VEGA_CHAIN,
@@ -40,8 +40,8 @@ testnet = {
 def get_balance(testnet_name: str, address: str):
     balance = subprocess.run(["gaiad", "query", "bank", "balances",
                               f"{address}",
-                              f"--node={testnet[testnet_name]['node']}",
-                              f"--chain-id={testnet[testnet_name]['chain']}"],
+                              f"--node={testnets[testnet_name]['node']}",
+                              f"--chain-id={testnets[testnet_name]['chain']}"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     faucet_balance = balance.stdout
     faucet_coins = {"amount": faucet_balance.split('\n')[1].split(' ')[2].split('"')[1],
@@ -51,7 +51,7 @@ def get_balance(testnet_name: str, address: str):
 
 def get_node_status(testnet_name: str):
     status = subprocess.run(
-        ["gaiad", "status", f"--node={testnet[testnet_name]['node']}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        ["gaiad", "status", f"--node={testnets[testnet_name]['node']}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     status = json.loads(status.stderr)
     node_status = {}
     node_status["moniker"] = status["NodeInfo"]["moniker"]
@@ -63,9 +63,9 @@ def get_node_status(testnet_name: str):
 
 def get_faucet_info(testnet_name: str):
     account = subprocess.run(["gaiad", "query", "account",
-                              f"{testnet[testnet_name]['faucet']}",
-                              f"--node={testnet[testnet_name]['node']}",
-                              f"--chain-id={testnet[testnet_name]['chain']}"],
+                              f"{testnets[testnet_name]['faucet']}",
+                              f"--node={testnets[testnet_name]['node']}",
+                              f"--chain-id={testnets[testnet_name]['chain']}"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     account.stdout
     account_number = account_info.split('\n')[1].split(' ')[1]
@@ -79,8 +79,8 @@ def get_tx_info(testnet_name: str, transaction: str):
     try:
         tx = subprocess.run(["gaiad", "query", "tx",
                              f"{transaction}",
-                             f"--node={testnet[testnet_name]['node']}",
-                             f"--chain-id={testnet[testnet_name]['chain']}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                             f"--node={testnets[testnet_name]['node']}",
+                             f"--chain-id={testnets[testnet_name]['chain']}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         tx_response = tx.stdout
         tx_lines = tx_response.split('\n')
         for line in tx_lines:
@@ -102,13 +102,13 @@ def get_tx_info(testnet_name: str, transaction: str):
 
 def tx_send(testnet_name: str, recipient: str):
     tx_send = subprocess.run(["gaiad", "tx", "bank", "send",
-                              f"{testnet[testnet_name]['faucet']}",
+                              f"{testnets[testnet_name]['faucet']}",
                               f"{recipient}",
                               f"{AMOUNT_TO_SEND}",
                               f"--fees=500uatom",
-                              f"--chain-id={testnet[testnet_name]['chain']}",
+                              f"--chain-id={testnets[testnet_name]['chain']}",
                               f"--keyring-backend=test",
-                              f"--node={testnet[testnet_name]['node']}",
+                              f"--node={testnets[testnet_name]['node']}",
                               "-y"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
