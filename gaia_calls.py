@@ -59,7 +59,7 @@ def get_balance(testnet_name: str, address: str):
                               f"--node={testnets[testnet_name]['node']}",
                               f"--chain-id={testnets[testnet_name]['chain']}"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, check=True)
+                             text=True)
     try:
         balance.check_returncode()
         account_balance = balance.stdout
