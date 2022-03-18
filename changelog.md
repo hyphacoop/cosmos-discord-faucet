@@ -2,8 +2,9 @@
 
 ## v0.2
 
-- Apply the 3hr time restriction separately for vega and theta requests.
+- The time restriction applies separately for vega and theta requests.
 - Specified Python version 3.8.12 or higher.
+- Added logging and error handling.
 
 ## v0.1
 
