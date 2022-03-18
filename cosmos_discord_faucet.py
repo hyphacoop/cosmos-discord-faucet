@@ -121,7 +121,6 @@ async def on_message(message):
                 else:
                     await message.reply('Account is not initialized (balance is empty)')
             except Exception as e:
-                print(type(e))
                 await message.reply("❗ gaia could not handle your request")
         else:
             await message.reply(f'Address must be {gaia.ADDRESS_LENGTH} characters long,'
