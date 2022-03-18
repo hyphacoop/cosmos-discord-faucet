@@ -54,31 +54,28 @@ testnets = {
 
 
 def get_balance(testnet_name: str, address: str):
-    # try:
     balance = subprocess.run(["gaiad", "query", "bank", "balances",
                               f"{address}",
                               f"--node={testnets[testnet_name]['node']}",
                               f"--chain-id={testnets[testnet_name]['chain']}"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              text=True, check=True)
-    # try:
-    # balance.check_returncode()
-    account_balance = balance.stdout
-    print(account_balance)
-    faucet_coins = {"amount": account_balance.split('\n')[1].split(' ')[2].split('"')[1],
-                    "denom": account_balance.split('\n')[2].split(' ')[3]}
-    return faucet_coins
-    # except subprocess.CalledProcessError as cpe:
-    #     output = str(balance.stderr).split('\n')[0]
-    #     logging.error("%s[%s]", cpe, output)
-    #     raise cpe
-    # except IndexError as index_error:
-    #     logging.error("Parsing error on balance request: %s", index_error)
-    #     raise index_error
-    # except Exception as exc:
-    #     print(exc)
+    try:
+        balance.check_returncode()
+        account_balance = balance.stdout
+        faucet_coins = {"amount": account_balance.split('\n')[1].split(' ')[2].split('"')[1],
+                        "denom": account_balance.split('\n')[2].split(' ')[3]}
+        return faucet_coins
+    except subprocess.CalledProcessError as cpe:
+        output = str(balance.stderr).split('\n')[0]
+        logging.error("%s[%s]", cpe, output)
+        raise cpe
+    except IndexError as index_error:
+        logging.error("Parsing error on balance request: %s", index_error)
+        raise index_error
+    except Exception as exc:
+        print(exc)
     return None
-
 
 def get_node_status(testnet_name: str):
     status = subprocess.run(
