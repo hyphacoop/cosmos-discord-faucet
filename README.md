@@ -18,8 +18,8 @@ cosmos-discord-faucet$ pip install -r requirements.txt
 ```
 
 2. [Create Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token) and save its token.
-3. Add the bot token to `config.ini`.
-4. Modify the nodes, faucet addresses, and amount to send in `config.ini` .
+3. Add the bot token to `config.toml`.
+4. Modify the nodes, faucet addresses, and amount to send in `config.toml` .
 
 ## Usage
 
@@ -55,10 +55,10 @@ systemctl status cosmos-discord-faucet.service
 3. Request the faucet address:  
 `$faucet_address vega|theta`
 
-1. Request information for a specific transaction:  
+4. Request information for a specific transaction:  
 `$tx_info [transaction hash ID] vega|theta`
 
-1. Request the address balance:  
+5. Request the address balance:  
 `$balance [cosmos address] vega|theta`  
 
 
