@@ -3,7 +3,7 @@ A Discord bot for dispensing testnet tokens.
 
 ## Requirements
 
-- python3.8.12+
+- python 3.8.12+
 - gaia v6.0.3+
 - Faucet keys in gaia keyring 
 
