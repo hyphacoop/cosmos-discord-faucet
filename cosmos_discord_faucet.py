@@ -253,8 +253,8 @@ async def on_message(message):
             testnet = testnets[name]
             # Dispatch message to appropriate handler
             if message.content.startswith('$faucet_address'):
-                await message.reply(f'The {testnet["name"]} \testnet has address '
-                                    f'`{testnet["faucet_address"]}`')
+                await message.reply(f'The {testnet["name"]} testnet has address'
+                                    f'  `{testnet["faucet_address"]}`')
             elif message.content.startswith('$balance'):
                 await balance_request(message, testnet)
             elif message.content.startswith('$faucet_status'):
