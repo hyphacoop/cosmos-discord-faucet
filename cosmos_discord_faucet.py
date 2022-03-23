@@ -226,7 +226,6 @@ def check_daily_cap(testnet: dict):
         return True
 
     # Check tally
-
     if testnet['day_tally'] + AMOUNT > int(testnet['daily_cap']):
         return False
 
@@ -278,6 +277,7 @@ async def token_request(message, testnet: dict):
                 del ACTIVE_REQUESTS[testnet['name']][address]
                 testnet['day_tally'] -= AMOUNT
         else:
+            testnet['day_tally'] -= AMOUNT
             logging.info('%s requested tokens for %s in %s and was rejected',
                          requester, address, testnet['name'])
             await message.reply(reply)
