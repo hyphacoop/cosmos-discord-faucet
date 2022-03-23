@@ -99,21 +99,27 @@ def get_tx_info(hash_id: str, node: str, chain_id: str):
         raise KeyError
 
 
-def tx_send(sender: str, recipient: str, amount: str,
-            node: str, chain_id: str):
+def tx_send(request: dict):
     """
+    The request dictionary must include these keys:
+    - "sender"
+    - "recipient"
+    - "amount"
+    - "fees"
+    - "node"
+    - "chain_id"
     gaiad tx bank send <from address> <to address> <amount>
                        <fees> <node> <chain-id>
                        --keyring-backend=test -y
 
     """
     tx_gaia = subprocess.run(['gaiad', 'tx', 'bank', 'send',
-                              f'{sender}',
-                              f'{recipient}',
-                              f'{amount}',
-                              '--fees=500uatom',
-                              f'--node={node}',
-                              f'--chain-id={chain_id}',
+                              f'{request["sender"]}',
+                              f'{request["recipient"]}',
+                              f'{request["amount"]}',
+                              f'--fees={request["fees"]}',
+                              f'--node={request["node"]}',
+                              f'--chain-id={request["chain_id"]}',
                               '--keyring-backend=test',
                               '-y'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

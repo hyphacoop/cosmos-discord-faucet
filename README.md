@@ -1,15 +1,26 @@
 # cosmos-discord-faucet
 A Discord bot for dispensing testnet tokens.
 
+## Features
+
+- Responds to requests for tokens on multiple testnets
+- Response includes a link to the transaction detail in the appropriate block explorer
+- Limits the tokens a user can get within a time period for a given testnet
+- Limits the tokens an address can get within a time period for a given testnet
+- Daily cap for each testnet token
+- Requests are saved in local csv file: date, cosmos address, amount, and testnet
+- Errors are logged to systemd journal
+
 ## Requirements
 
 - python 3.8.12+
 - gaia v6.0.3+
-- Faucet keys in gaia keyring 
+- Initialized gaia instance
+- Faucet keys in gaia keyring
 
 ## Installation
 
-1. Install dependencies:
+1. Python dependencies:
    
 ```
 cosmos-discord-faucet$ python -m venv .env
@@ -17,9 +28,9 @@ cosmos-discord-faucet$ source .env/bin/activate
 cosmos-discord-faucet$ pip install -r requirements.txt
 ```
 
-2. [Create Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token) and save its token.
-3. Add the bot token to `config.toml`.
-4. Modify the nodes, faucet addresses, and amount to send in `config.toml` .
+1. [Create a Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token)
+2. Add the bot token to `config.toml`
+3. Modify the nodes, faucet addresses, amount to send, etc. in `config.toml`
 
 ## Usage
 

@@ -12,24 +12,26 @@ address_length = "45"
     [testnets.vega]
     node_url = "http://165.22.235.50:26657"
     chain_id = "vega-testnet"
-    faucet_address = "cosmos1h8wlppxhp74fz7fmhhlz6t73z0uxx4mmwafhh8"
+    faucet_address = "cosmos15aptdqmm7ddgtcrjvc5hs988rlrkze40l4q0he"
     block_explorer_tx = "https://vega-explorer.hypha.coop/transactions/"
+    daily_cap = "500000000"
 
     [testnets.theta]
     node_url = "http://state-sync-01.theta-testnet.polypore.xyz:26657"
     chain_id = "theta-testnet-001"
     faucet_address = "cosmos15aptdqmm7ddgtcrjvc5hs988rlrkze40l4q0he"
     block_explorer_tx = "https://testnet.cosmos.bigdipper.live/transactions/"
+    daily_cap = "500000000"
 
 [request]
-gas_price         = "0.001"
-gas_limit         = "0.05"
-amount_to_send    = "10"
+tx_fees           = "500"
+amount_to_send    = "1000"
 
 [discord]
 bot_token = ""
 # comma separated list of channels
 channels_to_listen = "test-channel"
 # how often user can request tokens from faucet (seconds)
-# 10800 = 3 hours
-request_timeout    = "10800"
+# 10800 = 3  hours
+# 86400 = 24 hours
+request_timeout    = "86400"

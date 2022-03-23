@@ -32,13 +32,16 @@ try:
     DISCORD_TOKEN = str(config['discord']['bot_token'])
     LISTENING_CHANNELS = list(
         config['discord']['channels_to_listen'].split(','))
-    GAS_PRICE = float(config['request']['gas_price'])
-    GAS_LIMIT = float(config['request']['gas_limit'])
-    AMOUNT_TO_SEND = str(config['request']['amount_to_send']) + \
+    AMOUNT = int(config['request']['amount_to_send'])
+    AMOUNT_DENOM = str(config['request']['amount_to_send']) + \
+        str(config['cosmos']['denomination'])
+    TX_FEES = str(config['request']['tx_fees']) + \
         str(config['cosmos']['denomination'])
     testnets = config['testnets']
     for net in testnets:
-        testnets[net]["name"] = net
+        testnets[net]['name'] = net
+        testnets[net]["active_day"] = datetime.datetime.today().date()
+        testnets[net]["day_tally"] = 0
     TESTNET_OPTIONS = '|'.join(list(testnets.keys()))
 except KeyError as key:
     logging.critical('Key could not be found: %s', key)
@@ -58,6 +61,7 @@ help_msg = '**List of available commands:**\n' \
     f'`$tx_info [transaction hash ID] {TESTNET_OPTIONS}`\n\n' \
     '5. Request the address balance:\n' \
     f'`$balance [cosmos address] {TESTNET_OPTIONS}`'
+
 
 ACTIVE_REQUESTS = {'vega': dict(), 'theta': dict()}
 client = discord.Client()
@@ -93,7 +97,7 @@ async def balance_request(message, testnet: dict):
             reply = f'Address  `{address}`  has a balance of' \
                     f'  `{balance["amount"]}{balance["denom"]}`  '  \
                     f'in testnet  `{testnet["name"]}`'
-        except Exception as exc:
+        except Exception:
             reply = '❗ gaia could not handle your request'
     else:
         reply = f'Address must be {ADDRESS_LENGTH} characters long,' \
@@ -154,6 +158,82 @@ async def transaction_info(message, testnet: dict):
     await message.reply(reply)
 
 
+def check_time_limits(requester: str, address: str, testnet: dict):
+    """
+    Returns True, None if the given requester and address are not time-blocked for the given testnet
+    Returns False, reply if either of them is still on time-out; msg is the reply to the requester
+    """
+    message_timestamp = time.time()
+    # Check user allowance
+    if requester in ACTIVE_REQUESTS[testnet['name']]:
+        check_time = ACTIVE_REQUESTS[testnet['name']
+                                     ][requester]['next_request']
+        if check_time > message_timestamp:
+            seconds_left = check_time - message_timestamp
+            minutes_left = seconds_left / 60
+            if minutes_left > 120:
+                wait_time = str(int(minutes_left/60)) + ' hours'
+            else:
+                wait_time = str(int(minutes_left)) + ' minutes'
+            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+            reply = f'{REJECT_EMOJI} You can request coins no more than once every' \
+                f' {timeout_in_hours} hours for the same testnet, ' \
+                f'please try again in ' \
+                f'{wait_time}'
+            return False, reply
+        del ACTIVE_REQUESTS[testnet['name']][requester]
+
+    # Check address allowance
+    if address in ACTIVE_REQUESTS[testnet['name']]:
+        check_time = ACTIVE_REQUESTS[testnet['name']][address]['next_request']
+        if check_time > message_timestamp:
+            seconds_left = check_time - message_timestamp
+            minutes_left = seconds_left / 60
+            if minutes_left > 120:
+                wait_time = str(int(minutes_left/60)) + ' hours'
+            else:
+                wait_time = str(int(minutes_left)) + ' minutes'
+            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+            reply = f'{REJECT_EMOJI} You can request coins no more than once every' \
+                f' {timeout_in_hours} hours, for the same testnet, ' \
+                f'please try again in ' \
+                f'{wait_time}'
+            return False, reply
+        del ACTIVE_REQUESTS[testnet['name']][address]
+
+    if requester not in ACTIVE_REQUESTS[testnet['name']] and \
+       address not in ACTIVE_REQUESTS[testnet['name']]:
+        ACTIVE_REQUESTS[testnet['name']][requester] = {
+            'next_request': message_timestamp + REQUEST_TIMEOUT}
+        ACTIVE_REQUESTS[testnet['name']][address] = {
+            'next_request': message_timestamp + REQUEST_TIMEOUT}
+
+    return True, None
+
+
+def check_daily_cap(testnet: dict):
+    """
+    Returns True if the faucet has not reached the daily cap
+    Returns False otherwise
+    """
+    # Check date
+    today = datetime.datetime.today().date()
+    if today != testnet['active_day']:
+        # The date has changed, reset the tally
+        testnet['active_day'] = today
+        testnet['day_tally'] = AMOUNT
+        return True
+
+    # Check tally
+
+    if testnet['day_tally'] + AMOUNT > int(testnet['daily_cap']):
+        return False
+
+    testnet['day_tally'] += AMOUNT
+    return True
+
+
 async def token_request(message, testnet: dict):
     """
     Send tokens to the specified address
@@ -164,65 +244,48 @@ async def token_request(message, testnet: dict):
     address.remove(testnet['name'])
     address.remove('$request')
     address = address[0]
-    message_timestamp = time.time()
     requester = message.author
     if len(address) != ADDRESS_LENGTH or address[:len(ADDRESS_SUFFIX)] != ADDRESS_SUFFIX:
         await message.reply(f'Invalid address format: `{address}`:\n'
                             f'Address length must be `{ADDRESS_LENGTH}`'
                             f' and the suffix must be `{ADDRESS_SUFFIX}`')
 
-    # Check user allowance
-    if requester.id in ACTIVE_REQUESTS[testnet['name']]:
-        check_time = ACTIVE_REQUESTS[testnet['name']
-                                     ][requester.id]['next_request']
-        if check_time > message_timestamp:
-            timeout_in_hours = int(REQUEST_TIMEOUT) / 60 / 60
-            await message.reply(f'{REJECT_EMOJI} You can request coins no more than once every'
-                                f' {timeout_in_hours:.0f} hours, '
-                                f'please try again in '
-                                f'{round((check_time - message_timestamp) / 60, 2):.0f} minutes')
-            return
+    # Check whether the faucet has reached the daily cap
+    if check_daily_cap(testnet=testnet):
+        # Check whether user or address have received tokens on this testnet
+        approved, reply = check_time_limits(
+            requester=requester.id, address=address, testnet=testnet)
+        if approved:
+            request = {'sender': testnet['faucet_address'],
+                       'recipient': address,
+                       'amount': AMOUNT_DENOM,
+                       'fees': TX_FEES,
+                       'chain_id': testnet['chain_id'],
+                       'node': testnet['node_url']}
+            try:
+                # Make gaia call and send the response back
+                transfer = gaia.tx_send(request)
+                logging.info('%s requested tokens for %s in %s',
+                             requester, address, testnet['name'])
+                now = datetime.datetime.now()
+                await save_transaction_statistics(f'{now.strftime("%Y-%m-%d,%H:%M:%S")},'
+                                                  f'{testnet["name"]},{address},'
+                                                  f'{AMOUNT_DENOM},{transfer}')
+                await message.reply(f'✅  <{testnet["block_explorer_tx"]}{transfer}>')
+            except Exception:
+                await message.reply('❗ request could not be processed')
+                del ACTIVE_REQUESTS[testnet['name']][requester.id]
+                del ACTIVE_REQUESTS[testnet['name']][address]
+                testnet['day_tally'] -= AMOUNT
         else:
-            del ACTIVE_REQUESTS[testnet['name']][requester.id]
-
-    # Check address allowance
-    if address in ACTIVE_REQUESTS[testnet['name']]:
-        check_time = ACTIVE_REQUESTS[testnet['name']][address]["next_request"]
-        if check_time > message_timestamp:
-            timeout_in_hours = int(REQUEST_TIMEOUT) / 60 / 60
-            await message.reply(f'{REJECT_EMOJI} You can request coins no more than once every'
-                                f' {timeout_in_hours:.0f} hours, '
-                                f'please try again in '
-                                f'{round((check_time - message_timestamp) / 60, 2):.0f} minutes')
-            return
-        else:
-            del ACTIVE_REQUESTS[testnet['name']][address]
-
-    if requester.id not in ACTIVE_REQUESTS[testnet['name']] and \
-       address not in ACTIVE_REQUESTS[testnet['name']]:
-        ACTIVE_REQUESTS[testnet['name']][requester.id] = {
-            'requester': requester,
-            'next_request': message_timestamp + REQUEST_TIMEOUT}
-        ACTIVE_REQUESTS[testnet['name']][address] = {
-            'next_request': message_timestamp + REQUEST_TIMEOUT}
-
-    try:
-        transfer = gaia.tx_send(
-            sender=testnet['faucet_address'],
-            recipient=address,
-            amount=AMOUNT_TO_SEND,
-            chain_id=testnet["chain_id"],
-            node=testnet["node_url"])
-    except Exception:
-        await message.reply('❗ request could not be processed')
-        del ACTIVE_REQUESTS[testnet['name']][requester.id]
-        del ACTIVE_REQUESTS[testnet['name']][address]
-    logging.info('%s requested tokens for %s in %s',
-                 requester, address, testnet['name'])
-    now = datetime.datetime.now()
-    await save_transaction_statistics(f'{now.strftime("%Y-%m-%d,%H:%M:%S")},'
-                                      f'{testnet["name"]},{address},{AMOUNT_TO_SEND},{transfer}')
-    await message.reply(f'✅  <{testnet["block_explorer_tx"]}{transfer}>')
+            logging.info('%s requested tokens for %s in %s and was rejected',
+                         requester, address, testnet['name'])
+            await message.reply(reply)
+    else:
+        logging.info('%s requested tokens for %s in %s '
+                     'but the daily cap has been reached',
+                     requester, address, testnet['name'])
+        await message.reply("Sorry, the daily cap for this faucet has been reached")
 
 
 @client.event
@@ -247,7 +310,7 @@ async def on_message(message):
         await message.reply(help_msg)
         return
 
-    # User needs to specify testnet
+    # Respond to commands
     for name in list(testnets.keys()):
         if name in message.content:
             testnet = testnets[name]
