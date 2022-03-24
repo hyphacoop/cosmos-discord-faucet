@@ -108,16 +108,16 @@ async def faucet_status(message, testnet: dict):
     reply = ''
     try:
         node_status = gaia.get_node_status(node=testnet['node_url'])
-        amount, denom = gaia.get_balance(
+        balance = gaia.get_balance(
             address=testnet['faucet_address'],
             node=testnet['node_url'],
             chain_id=testnet['chain_id'])
-        if node_status.keys() and amount:
+        if node_status.keys() and balance:
             status = f'```\n' \
                 f'Node moniker:      {node_status["moniker"]}\n' \
                 f'Node last block:   {node_status["last_block"]}\n' \
                 f'Faucet address:    {testnet["faucet_address"]}\n' \
-                f'Faucet balance:    {amount}{denom}' \
+                f'Faucet balance:    {balance["amount"]}{balance["denom"]}' \
                 f'```'
             reply = status
     except Exception:
