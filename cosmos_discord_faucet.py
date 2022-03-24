@@ -25,23 +25,19 @@ logging.basicConfig(level=logging.INFO,
 config = toml.load('config.toml')
 
 try:
-    VERBOSE_MODE = config['verbose']
     ADDRESS_LENGTH = int(config['cosmos']['address_length'])
     ADDRESS_SUFFIX = config['cosmos']['BECH32_HRP']
     REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
     DISCORD_TOKEN = str(config['discord']['bot_token'])
     LISTENING_CHANNELS = list(
         config['discord']['channels_to_listen'].split(','))
-    AMOUNT = int(config['request']['amount_to_send'])
-    AMOUNT_DENOM = str(config['request']['amount_to_send']) + \
-        str(config['cosmos']['denomination'])
-    TX_FEES = str(config['request']['tx_fees']) + \
-        str(config['cosmos']['denomination'])
+    DENOM = str(config['cosmos']['denomination'])
     testnets = config['testnets']
     for net in testnets:
         testnets[net]['name'] = net
         testnets[net]["active_day"] = datetime.datetime.today().date()
         testnets[net]["day_tally"] = 0
+    ACTIVE_REQUESTS = {net: dict() for net in testnets}
     TESTNET_OPTIONS = '|'.join(list(testnets.keys()))
 except KeyError as key:
     logging.critical('Key could not be found: %s', key)
@@ -63,7 +59,6 @@ help_msg = '**List of available commands:**\n' \
     f'`$balance [cosmos address] {TESTNET_OPTIONS}`'
 
 
-ACTIVE_REQUESTS = {'vega': dict(), 'theta': dict()}
 client = discord.Client()
 
 
@@ -81,6 +76,7 @@ async def balance_request(message, testnet: dict):
     Provide the balance for a given address and testnet
     """
     reply = ''
+    # Extract address
     address = str(message.content).split(' ')
     if len(address) != 3:
         await message.reply(help_msg)
@@ -134,6 +130,7 @@ async def transaction_info(message, testnet: dict):
     Provide info on a specific transaction
     """
     reply = ''
+    # Extract hash ID
     hash_id = str(message.content).split(' ')
     if len(hash_id) != 3:
         return help_msg
@@ -217,19 +214,20 @@ def check_daily_cap(testnet: dict):
     Returns True if the faucet has not reached the daily cap
     Returns False otherwise
     """
+    delta = int(testnet["amount_to_send"])
     # Check date
     today = datetime.datetime.today().date()
     if today != testnet['active_day']:
         # The date has changed, reset the tally
         testnet['active_day'] = today
-        testnet['day_tally'] = AMOUNT
+        testnet['day_tally'] = delta
         return True
 
     # Check tally
-    if testnet['day_tally'] + AMOUNT > int(testnet['daily_cap']):
+    if testnet['day_tally'] + delta > int(testnet['daily_cap']):
         return False
 
-    testnet['day_tally'] += AMOUNT
+    testnet['day_tally'] += delta
     return True
 
 
@@ -237,6 +235,7 @@ async def token_request(message, testnet: dict):
     """
     Send tokens to the specified address
     """
+    # Extract address
     address = str(message.content).lower().split(" ")
     if len(address) != 3:
         await message.reply(help_msg)
@@ -257,8 +256,8 @@ async def token_request(message, testnet: dict):
         if approved:
             request = {'sender': testnet['faucet_address'],
                        'recipient': address,
-                       'amount': AMOUNT_DENOM,
-                       'fees': TX_FEES,
+                       'amount': testnet['amount_to_send'] + DENOM,
+                       'fees': testnet['tx_fees'] + DENOM,
                        'chain_id': testnet['chain_id'],
                        'node': testnet['node_url']}
             try:
@@ -269,15 +268,19 @@ async def token_request(message, testnet: dict):
                 now = datetime.datetime.now()
                 await save_transaction_statistics(f'{now.strftime("%Y-%m-%d,%H:%M:%S")},'
                                                   f'{testnet["name"]},{address},'
-                                                  f'{AMOUNT_DENOM},{transfer}')
-                await message.reply(f'✅  <{testnet["block_explorer_tx"]}{transfer}>')
+                                                  f'{testnet["amount_to_send"] + DENOM},'
+                                                  f'{transfer}')
+                if testnet["block_explorer_tx"]:
+                    await message.reply(f'✅  <{testnet["block_explorer_tx"]}{transfer}>')
+                else:
+                    await message.reply(f'✅ Hash ID: {transfer}')
             except Exception:
                 await message.reply('❗ request could not be processed')
                 del ACTIVE_REQUESTS[testnet['name']][requester.id]
                 del ACTIVE_REQUESTS[testnet['name']][address]
-                testnet['day_tally'] -= AMOUNT
+                testnet['day_tally'] -= int(testnet['amount_to_send'])
         else:
-            testnet['day_tally'] -= AMOUNT
+            testnet['day_tally'] -= int(testnet['amount_to_send'])
             logging.info('%s requested tokens for %s in %s and was rejected',
                          requester, address, testnet['name'])
             await message.reply(reply)

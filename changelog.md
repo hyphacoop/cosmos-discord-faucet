@@ -2,11 +2,12 @@
 
 ## v0.2
 
-- The time restriction applies separately for vega and theta requests.
+- The time restriction applies separately for vega, theta, and devnet requests.
 - Specified Python version 3.8.12 or higher.
 - Added link to transaction details on the token request response.
 - Added logging and error handling.
 - Added daily caps per faucet.
+- Separate send amounts and transaction fees per faucet.
 
 ## v0.1
 
