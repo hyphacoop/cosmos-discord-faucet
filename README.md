@@ -1,15 +1,26 @@
 # cosmos-discord-faucet
 A Discord bot for dispensing testnet tokens.
 
+## Features
+
+- Responds to requests for tokens on multiple testnets
+- Response includes a link to the transaction detail in the appropriate block explorer
+- Limits the tokens a user can get within a time period for a given testnet
+- Limits the tokens an address can get within a time period for a given testnet
+- Daily cap for each testnet token
+- Requests are saved in local csv file: date, cosmos address, amount, and testnet
+- Errors are logged to systemd journal
+
 ## Requirements
 
-- python3.8+  
-- gaia v6.0.0+
-- Faucet keys in gaia keyring 
+- python 3.8.12+
+- gaia v6.0.3+
+- Initialized gaia instance
+- Faucet keys in gaia keyring
 
 ## Installation
 
-1. Install dependencies:
+1. Python dependencies:
    
 ```
 cosmos-discord-faucet$ python -m venv .env
@@ -17,9 +28,9 @@ cosmos-discord-faucet$ source .env/bin/activate
 cosmos-discord-faucet$ pip install -r requirements.txt
 ```
 
-2. [Create Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token) and save its token.
-3. Add the bot token to `config.ini`.
-4. Modify the nodes, faucet addresses, and amount to send in `config.ini` .
+1. [Create a Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token)
+2. Add the bot token to `config.toml`
+3. Modify the nodes, faucet addresses, amount to send, etc. in `config.toml`
 
 ## Usage
 
@@ -55,10 +66,10 @@ systemctl status cosmos-discord-faucet.service
 3. Request the faucet address:  
 `$faucet_address vega|theta`
 
-1. Request information for a specific transaction:  
+4. Request information for a specific transaction:  
 `$tx_info [transaction hash ID] vega|theta`
 
-1. Request the address balance:  
+5. Request the address balance:  
 `$balance [cosmos address] vega|theta`  
 
 

@@ -1,12 +1,16 @@
-import aiofiles as aiof
-import discord
-import configparser
+"""
+Sets up a Discord bot to provide info and tokens
+
+"""
+
+# import configparser
 import time
-import logging
 import datetime
+import logging
 import sys
-import subprocess
-import json
+import aiofiles as aiof
+import toml
+import discord
 import gaia_calls as gaia
 
 # Turn Down Discord Logging
@@ -14,182 +18,318 @@ disc_log = logging.getLogger('discord')
 disc_log.setLevel(logging.CRITICAL)
 
 # Configure Logging
-logging.basicConfig(stream=sys.stdout, level=logging.CRITICAL)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(message)s')
 
 # Load config
-c = configparser.ConfigParser()
-c.read("config.ini", encoding='utf-8')
+config = toml.load('config.toml')
 
-VERBOSE_MODE = str(c["DEFAULT"]["verbose"])
-ADDRESS_LENGTH = int(c["DEFAULT"]["address_length"])
-ADDRESS_SUFFIX = str(c["DEFAULT"]["BECH32_HRP"])
-REQUEST_TIMEOUT = int(c["DISCORD"]["request_timeout"])
-DISCORD_TOKEN = str(c["DISCORD"]["bot_token"])
-LISTENING_CHANNELS = list(c["DISCORD"]["channels_to_listen"].split(","))
+try:
+    ADDRESS_LENGTH = int(config['cosmos']['address_length'])
+    ADDRESS_SUFFIX = config['cosmos']['BECH32_HRP']
+    REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
+    DISCORD_TOKEN = str(config['discord']['bot_token'])
+    LISTENING_CHANNELS = list(
+        config['discord']['channels_to_listen'].split(','))
+    DENOM = str(config['cosmos']['denomination'])
+    testnets = config['testnets']
+    for net in testnets:
+        testnets[net]['name'] = net
+        testnets[net]["active_day"] = datetime.datetime.today().date()
+        testnets[net]["day_tally"] = 0
+    ACTIVE_REQUESTS = {net: dict() for net in testnets}
+    TESTNET_OPTIONS = '|'.join(list(testnets.keys()))
+except KeyError as key:
+    logging.critical('Key could not be found: %s', key)
+    sys.exit()
 
-APPROVE_EMOJI = "✅"
-REJECT_EMOJI = "🚫"
-ACTIVE_REQUESTS = {}
+APPROVE_EMOJI = '✅'
+REJECT_EMOJI = '🚫'
+
+help_msg = '**List of available commands:**\n' \
+    '1. Request tokens through the faucet:\n' \
+    f'`$request [cosmos address] {TESTNET_OPTIONS}`\n\n' \
+    '2. Request the faucet and node status:\n' \
+    f'`$faucet_status {TESTNET_OPTIONS}`\n\n' \
+    '3. Request the faucet address: \n' \
+    f'`$faucet_address {TESTNET_OPTIONS}`\n\n' \
+    '4. Request information for a specific transaction:\n'\
+    f'`$tx_info [transaction hash ID] {TESTNET_OPTIONS}`\n\n' \
+    '5. Request the address balance:\n' \
+    f'`$balance [cosmos address] {TESTNET_OPTIONS}`'
+
+
 client = discord.Client()
 
-with open("help_msg.txt", "r", encoding="utf-8") as help_file:
-    help_msg = help_file.read()
 
-async def save_transaction_statistics(some_string: str):
-    async with aiof.open("transactions.csv", "a") as csv_file:
-        await csv_file.write(f'{some_string}\n')
+async def save_transaction_statistics(transaction: str):
+    """
+    Transaction strings are already comma-separated
+    """
+    async with aiof.open('transactions.csv', 'a') as csv_file:
+        await csv_file.write(f'{transaction}\n')
         await csv_file.flush()
+
+
+async def balance_request(message, testnet: dict):
+    """
+    Provide the balance for a given address and testnet
+    """
+    reply = ''
+    # Extract address
+    address = str(message.content).split(' ')
+    if len(address) != 3:
+        await message.reply(help_msg)
+    address.remove(testnet['name'])
+    address.remove('$balance')
+    address = address[0]
+
+    if len(address) == ADDRESS_LENGTH:
+        try:
+            balance = gaia.get_balance(
+                address=address,
+                node=testnet["node_url"],
+                chain_id=testnet["chain_id"])
+            reply = f'Address  `{address}`  has a balance of' \
+                    f'  `{balance["amount"]}{balance["denom"]}`  '  \
+                    f'in testnet  `{testnet["name"]}`'
+        except Exception:
+            reply = '❗ gaia could not handle your request'
+    else:
+        reply = f'Address must be {ADDRESS_LENGTH} characters long,' \
+                f'received `{len(address)}`'
+    await message.reply(reply)
+
+
+async def faucet_status(message, testnet: dict):
+    """
+    Provide node and faucet info
+    """
+    reply = ''
+    try:
+        node_status = gaia.get_node_status(node=testnet['node_url'])
+        amount, denom = gaia.get_balance(
+            address=testnet['faucet_address'],
+            node=testnet['node_url'],
+            chain_id=testnet['chain_id'])
+        if node_status.keys() and amount:
+            status = f'```\n' \
+                f'Node moniker:      {node_status["moniker"]}\n' \
+                f'Node last block:   {node_status["last_block"]}\n' \
+                f'Faucet address:    {testnet["faucet_address"]}\n' \
+                f'Faucet balance:    {amount}{denom}' \
+                f'```'
+            reply = status
+    except Exception:
+        reply = '❗ gaia could not handle your request'
+    await message.reply(reply)
+
+
+async def transaction_info(message, testnet: dict):
+    """
+    Provide info on a specific transaction
+    """
+    reply = ''
+    # Extract hash ID
+    hash_id = str(message.content).split(' ')
+    if len(hash_id) != 3:
+        return help_msg
+    hash_id.remove(testnet['name'])
+    hash_id.remove('$tx_info')
+    hash_id = hash_id[0]
+    if len(hash_id) == 64:
+        try:
+            res = gaia.get_tx_info(
+                hash_id=hash_id,
+                node=testnet['node_url'],
+                chain_id=testnet['chain_id'])
+            reply = f'```' \
+                f'From:    {res["sender"]}\n' \
+                f'To:      {res["recipient"]}\n' \
+                f'Amount:  {res["amount"]}\n```'
+
+        except Exception:
+            reply = '❗ gaia could not handle your request'
+    else:
+        reply = f'Hash ID must be 64 characters long, received `{len(hash_id)}`'
+    await message.reply(reply)
+
+
+def check_time_limits(requester: str, address: str, testnet: dict):
+    """
+    Returns True, None if the given requester and address are not time-blocked for the given testnet
+    Returns False, reply if either of them is still on time-out; msg is the reply to the requester
+    """
+    message_timestamp = time.time()
+    # Check user allowance
+    if requester in ACTIVE_REQUESTS[testnet['name']]:
+        check_time = ACTIVE_REQUESTS[testnet['name']
+                                     ][requester]['next_request']
+        if check_time > message_timestamp:
+            seconds_left = check_time - message_timestamp
+            minutes_left = seconds_left / 60
+            if minutes_left > 120:
+                wait_time = str(int(minutes_left/60)) + ' hours'
+            else:
+                wait_time = str(int(minutes_left)) + ' minutes'
+            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+            reply = f'{REJECT_EMOJI} You can request coins no more than once every' \
+                f' {timeout_in_hours} hours for the same testnet, ' \
+                f'please try again in ' \
+                f'{wait_time}'
+            return False, reply
+        del ACTIVE_REQUESTS[testnet['name']][requester]
+
+    # Check address allowance
+    if address in ACTIVE_REQUESTS[testnet['name']]:
+        check_time = ACTIVE_REQUESTS[testnet['name']][address]['next_request']
+        if check_time > message_timestamp:
+            seconds_left = check_time - message_timestamp
+            minutes_left = seconds_left / 60
+            if minutes_left > 120:
+                wait_time = str(int(minutes_left/60)) + ' hours'
+            else:
+                wait_time = str(int(minutes_left)) + ' minutes'
+            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+            reply = f'{REJECT_EMOJI} You can request coins no more than once every' \
+                f' {timeout_in_hours} hours, for the same testnet, ' \
+                f'please try again in ' \
+                f'{wait_time}'
+            return False, reply
+        del ACTIVE_REQUESTS[testnet['name']][address]
+
+    if requester not in ACTIVE_REQUESTS[testnet['name']] and \
+       address not in ACTIVE_REQUESTS[testnet['name']]:
+        ACTIVE_REQUESTS[testnet['name']][requester] = {
+            'next_request': message_timestamp + REQUEST_TIMEOUT}
+        ACTIVE_REQUESTS[testnet['name']][address] = {
+            'next_request': message_timestamp + REQUEST_TIMEOUT}
+
+    return True, None
+
+
+def check_daily_cap(testnet: dict):
+    """
+    Returns True if the faucet has not reached the daily cap
+    Returns False otherwise
+    """
+    delta = int(testnet["amount_to_send"])
+    # Check date
+    today = datetime.datetime.today().date()
+    if today != testnet['active_day']:
+        # The date has changed, reset the tally
+        testnet['active_day'] = today
+        testnet['day_tally'] = delta
+        return True
+
+    # Check tally
+    if testnet['day_tally'] + delta > int(testnet['daily_cap']):
+        return False
+
+    testnet['day_tally'] += delta
+    return True
+
+
+async def token_request(message, testnet: dict):
+    """
+    Send tokens to the specified address
+    """
+    # Extract address
+    address = str(message.content).lower().split(" ")
+    if len(address) != 3:
+        await message.reply(help_msg)
+    address.remove(testnet['name'])
+    address.remove('$request')
+    address = address[0]
+    requester = message.author
+    if len(address) != ADDRESS_LENGTH or address[:len(ADDRESS_SUFFIX)] != ADDRESS_SUFFIX:
+        await message.reply(f'Invalid address format: `{address}`:\n'
+                            f'Address length must be `{ADDRESS_LENGTH}`'
+                            f' and the suffix must be `{ADDRESS_SUFFIX}`')
+
+    # Check whether the faucet has reached the daily cap
+    if check_daily_cap(testnet=testnet):
+        # Check whether user or address have received tokens on this testnet
+        approved, reply = check_time_limits(
+            requester=requester.id, address=address, testnet=testnet)
+        if approved:
+            request = {'sender': testnet['faucet_address'],
+                       'recipient': address,
+                       'amount': testnet['amount_to_send'] + DENOM,
+                       'fees': testnet['tx_fees'] + DENOM,
+                       'chain_id': testnet['chain_id'],
+                       'node': testnet['node_url']}
+            try:
+                # Make gaia call and send the response back
+                transfer = gaia.tx_send(request)
+                logging.info('%s requested tokens for %s in %s',
+                             requester, address, testnet['name'])
+                now = datetime.datetime.now()
+                await save_transaction_statistics(f'{now.strftime("%Y-%m-%d,%H:%M:%S")},'
+                                                  f'{testnet["name"]},{address},'
+                                                  f'{testnet["amount_to_send"] + DENOM},'
+                                                  f'{transfer}')
+                if testnet["block_explorer_tx"]:
+                    await message.reply(f'✅  <{testnet["block_explorer_tx"]}{transfer}>')
+                else:
+                    await message.reply(f'✅ Hash ID: {transfer}')
+            except Exception:
+                await message.reply('❗ request could not be processed')
+                del ACTIVE_REQUESTS[testnet['name']][requester.id]
+                del ACTIVE_REQUESTS[testnet['name']][address]
+                testnet['day_tally'] -= int(testnet['amount_to_send'])
+        else:
+            testnet['day_tally'] -= int(testnet['amount_to_send'])
+            logging.info('%s requested tokens for %s in %s and was rejected',
+                         requester, address, testnet['name'])
+            await message.reply(reply)
+    else:
+        logging.info('%s requested tokens for %s in %s '
+                     'but the daily cap has been reached',
+                     requester, address, testnet['name'])
+        await message.reply("Sorry, the daily cap for this faucet has been reached")
+
 
 @client.event
 async def on_ready():
-    logger.info(f'Logged in as {client.user}')
+    """
+    Gets called when the Discord client logs in
+    """
+    logging.info('Logged into Discord as %s', client.user)
+
 
 @client.event
 async def on_message(message):
-    message_timestamp = time.time()
-    requester = message.author
-
-    # Do not listen to your own messages
-    if message.author == client.user:
-        return
-
-    # Only listen in on the specified channels
-    if message.channel.name not in LISTENING_CHANNELS:
+    """
+    Responds to messages on specified channels.
+    """
+    # Only listen in specific channels, and do not listen to your own messages
+    if (message.channel.name not in LISTENING_CHANNELS) or (message.author == client.user):
         return
 
     # Respond to $help
     if message.content.startswith('$help'):
-        await message.channel.send(help_msg)
+        await message.reply(help_msg)
         return
 
-    # User needs to specify testnet: they only have to say "vega" or "theta"
-    testnet = ''
-    testnet_name = ''
-    if "vega" in message.content:
-        testnet = gaia.testnet["vega"]
-        testnet_name = "vega"
-    elif "theta" in message.content:
-        testnet = gaia.testnet["theta"]
-        testnet_name = "theta"
-    else:
-        await message.reply(f"Please specify which testnet you would like tokens for: **vega** or **theta**\n" \
-            f"{help_msg}")
-        return
+    # Respond to commands
+    for name in list(testnets.keys()):
+        if name in message.content:
+            testnet = testnets[name]
+            # Dispatch message to appropriate handler
+            if message.content.startswith('$faucet_address'):
+                await message.reply(f'The {testnet["name"]} testnet has address'
+                                    f'  `{testnet["faucet_address"]}`')
+            elif message.content.startswith('$balance'):
+                await balance_request(message, testnet)
+            elif message.content.startswith('$faucet_status'):
+                await faucet_status(message, testnet)
+            elif message.content.startswith('$tx_info'):
+                await transaction_info(message, testnet)
+            elif message.content.startswith('$request'):
+                await token_request(message, testnet)
+            break
 
-    # Provide the faucet address
-    if message.content.startswith('$faucet_address') or message.content.startswith('$tap_address'):
-        try:
-            await message.reply(f'The {testnet_name} testnet has address `{testnet["faucet"]}`')
-        except:
-            print("Can't send message $faucet_address")
-
-    # Provide the balance for a given address
-    if message.content.startswith('$balance'):
-        address = str(message.content).split(' ')
-        address.remove(testnet_name)
-        address.remove('$balance')
-        address = address[0]
-        if len(address) == ADDRESS_LENGTH:
-            balance = gaia.get_balance(testnet_name=testnet_name, address=address)
-            if balance.keys():
-                # await message.channel.send(f'{message.author.mention}\n' \
-                await message.reply(f'Address `{address}` has a balance of ' \
-                                        f'`{balance["amount"]}{balance["denom"]}`' \
-                                        f'in testnet `{testnet_name}`')
-            else:
-                await message.reply(f'Account is not initialized (balance is empty)')
-        else:
-            await message.reply(f'Address must be {gaia.ADDRESS_LENGTH} characters long, received `{len(address)}`')
-
-    # Show node and faucet info
-    if message.content.startswith('$faucet_status'):
-        try:
-            node_status = gaia.get_node_status(testnet_name=testnet_name)
-            faucet_balance = gaia.get_balance(testnet_name=testnet_name, address=testnet["faucet"])
-
-            if node_status.keys() and faucet_balance.keys():
-                s = f'```\n' \
-                    f'Node moniker:      {node_status["moniker"]}\n' \
-                    f'Node catching up?  {node_status["syncs"]}\n' \
-                    f'Node last block:   {node_status["last_block"]}\n' \
-                    f'Faucet address:    {testnet["faucet"]}\n' \
-                    f'Faucet balance:    {faucet_balance["amount"]}{faucet_balance["denom"]}' \
-                    f'```'
-                print(s)
-                await message.reply(s)
-
-        except Exception as statusErr:
-            print(statusErr)
-
-    # Provide info on a specific transaction
-    if message.content.startswith('$tx_info'):
-        hash_id = str(message.content).split(' ')
-        hash_id.remove(testnet_name)
-        hash_id.remove('$tx_info')
-        hash_id = hash_id[0]
-        if len(hash_id) == 64:
-            tx = gaia.get_tx_info(testnet_name=testnet_name, transaction=hash_id)
-            if tx.keys():
-                tx_info = f'```' \
-                        f'From:    {tx["sender"]}\n' \
-                        f'To:      {tx["recipient"]}\n' \
-                        f'Amount:  {tx["amount"]}\n```'
-            else:
-                await message.reply("Could not obtain tx info")
-            await message.reply(tx_info)
-        else:
-            await message.reply(f'Hash ID must be 64 characters long, received `{len(hash_id)}`')
-
-    # Send tokens to the specified address
-    if message.content.startswith('$request'):
-        channel = message.channel
-        address = str(message.content).lower().split(" ")
-        address.remove(testnet_name)
-        address.remove('$request')
-        address = address[0]
-
-        if len(address) != ADDRESS_LENGTH or address[:len(ADDRESS_SUFFIX)] != ADDRESS_SUFFIX:
-            await message.reply(f'Invalid address format: `{address}`:\n'
-                               f'Address length must be `{ADDRESS_LENGTH}` and the suffix must be `{ADDRESS_SUFFIX}`')
-            return
-
-        if requester.id in ACTIVE_REQUESTS:
-            check_time = ACTIVE_REQUESTS[requester.id]["next_request"]
-            if check_time > message_timestamp:
-                timeout_in_hours = int(REQUEST_TIMEOUT) / 60 / 60
-                please_wait_text = f'You can request coins no more than once every {timeout_in_hours:.0f} hours, ' \
-                                   f'please try again in ' \
-                                   f'{round((check_time - message_timestamp) / 60, 2):.0f} minutes'
-                await message.reply(please_wait_text)
-                return
-
-            else:
-                del ACTIVE_REQUESTS[requester.id]
-
-        if requester.id not in ACTIVE_REQUESTS and address not in ACTIVE_REQUESTS:
-
-            ACTIVE_REQUESTS[requester.id] = {
-                "address": address,
-                "requester": requester,
-               "next_request": message_timestamp + REQUEST_TIMEOUT}
-
-            balance = gaia.get_balance(testnet_name=testnet_name, address=address)
- 
-            result = gaia.tx_send(testnet_name=testnet_name, recipient=address)
-            if "coin_received" in result:
-                for line in result.split('\n'):
-                    if 'raw_log' in line:
-                        line = line.replace("raw_log: '[", '')
-                        line = line[:-2]
-                        # log = json.loads(line)
-                        logger.info(f"{requester} had tokens sent to {address}.")
-                        await message.reply("✅")
-                        now = datetime.datetime.now()
-                        await save_transaction_statistics(f'{now.strftime("%Y-%m-%d %H:%M:%S")}> {line}')
-          
-            else:
-                await message.reply(f'Could not send transaction, try making another request')
-                del ACTIVE_REQUESTS[requester.id]
 
 client.run(DISCORD_TOKEN)

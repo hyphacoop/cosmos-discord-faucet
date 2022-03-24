@@ -5,3 +5,7 @@ __pycache__/
 
 # Environments
 .env
+lint.sh
+
+# Logs
+transactions.csv
