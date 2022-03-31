@@ -77,7 +77,7 @@ async def balance_request(message, testnet: dict):
     """
     reply = ''
     # Extract address
-    address = str(message.content).split(' ')
+    address = str(message.content).split()
     if len(address) != 3:
         await message.reply(help_msg)
     address.remove(testnet['name'])
@@ -131,7 +131,7 @@ async def transaction_info(message, testnet: dict):
     """
     reply = ''
     # Extract hash ID
-    hash_id = str(message.content).split(' ')
+    hash_id = str(message.content).split()
     if len(hash_id) != 3:
         return help_msg
     hash_id.remove(testnet['name'])
@@ -236,7 +236,7 @@ async def token_request(message, testnet: dict):
     Send tokens to the specified address
     """
     # Extract address
-    address = str(message.content).lower().split(" ")
+    address = str(message.content).lower().split()
     if len(address) != 3:
         await message.reply(help_msg)
     address.remove(testnet['name'])
@@ -319,7 +319,7 @@ async def on_message(message):
             testnet = testnets[name]
             # Dispatch message to appropriate handler
             if message.content.startswith('$faucet_address'):
-                await message.reply(f'The {testnet["name"]} testnet has address'
+                await message.reply(f'The {testnet["name"]} faucet has address'
                                     f'  `{testnet["faucet_address"]}`')
             elif message.content.startswith('$balance'):
                 await balance_request(message, testnet)
