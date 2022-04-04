@@ -3,10 +3,9 @@
 verbose        = "yes"
 
 [cosmos]
-BECH32_HRP     = "cosmos"
+prefix         = "cosmos"
 denomination   = "uatom"
 decimal        = "1e6"
-address_length = "45"
 
 [testnets]
     [testnets.vega]

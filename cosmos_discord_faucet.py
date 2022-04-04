@@ -25,8 +25,7 @@ logging.basicConfig(level=logging.INFO,
 config = toml.load('config.toml')
 
 try:
-    ADDRESS_LENGTH = int(config['cosmos']['address_length'])
-    ADDRESS_SUFFIX = config['cosmos']['BECH32_HRP']
+    ADDRESS_PREFIX = config['cosmos']['prefix']
     REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
     DISCORD_TOKEN = str(config['discord']['bot_token'])
     LISTENING_CHANNELS = list(
@@ -84,20 +83,24 @@ async def balance_request(message, testnet: dict):
     address.remove('$balance')
     address = address[0]
 
-    if len(address) == ADDRESS_LENGTH:
-        try:
-            balance = gaia.get_balance(
-                address=address,
-                node=testnet["node_url"],
-                chain_id=testnet["chain_id"])
-            reply = f'Address  `{address}`  has a balance of' \
-                    f'  `{balance["amount"]}{balance["denom"]}`  '  \
-                    f'in testnet  `{testnet["name"]}`'
-        except Exception:
-            reply = '❗ gaia could not handle your request'
-    else:
-        reply = f'Address must be {ADDRESS_LENGTH} characters long,' \
-                f'received `{len(address)}`'
+    try:
+        # check address is valid
+        result = gaia.check_address(address)
+        if result['human'] == ADDRESS_PREFIX:
+            try:
+                balance = gaia.get_balance(
+                    address=address,
+                    node=testnet["node_url"],
+                    chain_id=testnet["chain_id"])
+                reply = f'Address  `{address}`  has a balance of' \
+                        f'  `{balance["amount"]}{balance["denom"]}`  '  \
+                        f'in testnet  `{testnet["name"]}`'
+            except Exception:
+                reply = '❗ gaia could not handle your request'
+        else:
+            reply = f'❗ Expected `{ADDRESS_PREFIX}` prefix'
+    except Exception:
+        reply = '❗ gaia could not verify the address'
     await message.reply(reply)
 
 
@@ -151,7 +154,7 @@ async def transaction_info(message, testnet: dict):
         except Exception:
             reply = '❗ gaia could not handle your request'
     else:
-        reply = f'Hash ID must be 64 characters long, received `{len(hash_id)}`'
+        reply = f'❗ Hash ID must be 64 characters long, received `{len(hash_id)}`'
     await message.reply(reply)
 
 
@@ -242,12 +245,19 @@ async def token_request(message, testnet: dict):
     address.remove(testnet['name'])
     address.remove('$request')
     address = address[0]
-    requester = message.author
-    if len(address) != ADDRESS_LENGTH or address[:len(ADDRESS_SUFFIX)] != ADDRESS_SUFFIX:
-        await message.reply(f'Invalid address format: `{address}`:\n'
-                            f'Address length must be `{ADDRESS_LENGTH}`'
-                            f' and the suffix must be `{ADDRESS_SUFFIX}`')
 
+    # Check address
+    try:
+        # check address is valid
+        result = gaia.check_address(address)
+        if result['human'] != ADDRESS_PREFIX:
+            await message.reply(f'❗ Expected `{ADDRESS_PREFIX}` prefix')
+            return
+    except Exception:
+        await message.reply('❗ gaia could not verify the address')
+        return
+
+    requester = message.author
     # Check whether the faucet has reached the daily cap
     if check_daily_cap(testnet=testnet):
         # Check whether user or address have received tokens on this testnet
