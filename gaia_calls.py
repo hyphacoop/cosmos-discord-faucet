@@ -11,6 +11,29 @@ import subprocess
 import logging
 
 
+def check_address(address: str):
+    """
+    gaiad keys parse <address>
+    """
+    check = subprocess.run(["gaiad", "keys", "parse",
+                            f"{address}"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           text=True)
+    try:
+        check.check_returncode()
+        address_dict = {entry.split(': ')[0]: entry.split(
+            ': ')[1] for entry in check.stdout.split('\n')[:2]}
+        return address_dict
+    except subprocess.CalledProcessError as cpe:
+        output = str(check.stderr).split('\n')[0]
+        logging.error("Called Process Error: %s, stderr: %s", cpe, output)
+        raise cpe
+    except IndexError as index_error:
+        logging.error('Parsing error on address check: %s', index_error)
+        raise index_error
+    return None
+
+
 def get_balance(address: str, node: str, chain_id: str):
     """
     gaiad query bank balances <address> <node> <chain-id>
