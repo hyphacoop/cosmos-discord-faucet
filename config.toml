@@ -8,15 +8,6 @@ denomination   = "uatom"
 decimal        = "1e6"
 
 [testnets]
-    [testnets.vega]
-    node_url = "http://165.22.235.50:26657"
-    chain_id = "vega-testnet"
-    faucet_address = "cosmos15aptdqmm7ddgtcrjvc5hs988rlrkze40l4q0he"
-    block_explorer_tx = "https://vega-explorer.hypha.coop/transactions/"
-    daily_cap = "400000000"
-    amount_to_send = "10000000"
-    tx_fees = "500"
-
     [testnets.theta]
     node_url = "http://state-sync-01.theta-testnet.polypore.xyz:26657"
     chain_id = "theta-testnet-001"
