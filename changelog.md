@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3
+
+- The Vega testnet has gone offline.
+- Removed vega testnet from `config.toml`.
+- If a user mentions vega in a message starting with '$', reply with a notification.
+
 ## v0.2
 
 - The time restriction applies separately for vega, theta, and devnet requests.

@@ -323,6 +323,11 @@ async def on_message(message):
         await message.reply(help_msg)
         return
 
+    # Notify users of vega shutdown
+    if message.content[0] == ('$') and 'vega' in message.content.lower():
+        await message.reply(f'The Vega testnet is no longer active as of April 14, 2022. Please use Theta instead.')
+        return
+
     # Respond to commands
     for name in list(testnets.keys()):
         if name in message.content:
