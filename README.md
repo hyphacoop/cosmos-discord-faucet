@@ -57,20 +57,20 @@ systemctl status cosmos-discord-faucet.service
 ## Discord Commands
 
 1. Request tokens through the faucet:  
-`$request [cosmos address] vega|theta`
+`$request [cosmos address] theta|devnet`
 - A ✅ means the transaction was successful
 
 2. Request the faucet and node status:  
-`$faucet_status vega|theta`
+`$faucet_status theta|devnet`
 
 3. Request the faucet address:  
-`$faucet_address vega|theta`
+`$faucet_address theta|devnet`
 
 4. Request information for a specific transaction:  
-`$tx_info [transaction hash ID] vega|theta`
+`$tx_info [transaction hash ID] theta|devnet`
 
 5. Request the address balance:  
-`$balance [cosmos address] vega|theta`  
+`$balance [cosmos address] theta|devnet`  
 
 
 ## Acknowledgements
