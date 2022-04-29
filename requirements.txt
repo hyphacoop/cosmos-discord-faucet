@@ -7,6 +7,7 @@ discord==1.7.3
 discord.py==1.7.3
 idna==3.3
 multidict==6.0.2
+tabulate==0.8.9
+toml==0.10.2
 typing_extensions==4.1.1
 yarl==1.7.2
-toml==0.10.2
