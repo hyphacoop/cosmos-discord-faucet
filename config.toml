@@ -5,7 +5,6 @@ verbose        = "yes"
 [cosmos]
 prefix         = "cosmos"
 denomination   = "uatom"
-decimal        = "1e6"
 
 [testnets]
     [testnets.theta]
