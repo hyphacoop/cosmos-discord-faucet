@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4
+
+- The `$balance` command now responds with all the available denoms in an account.
+- The `$faucet_status` command no longer includes the faucet balance.
+
 ## v0.3
 
 - The Vega testnet has gone offline.

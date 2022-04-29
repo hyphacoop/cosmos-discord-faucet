@@ -7,6 +7,7 @@ Sets up a Discord bot to provide info and tokens
 import time
 import datetime
 import logging
+from tabulate import tabulate
 import sys
 import aiofiles as aiof
 import toml
@@ -92,9 +93,9 @@ async def balance_request(message, testnet: dict):
                     address=address,
                     node=testnet["node_url"],
                     chain_id=testnet["chain_id"])
-                reply = f'Address  `{address}`  has a balance of' \
-                        f'  `{balance["amount"]}{balance["denom"]}`  '  \
-                        f'in testnet  `{testnet["name"]}`'
+                reply = f'Balance for address `{address}` in testnet `{testnet["name"]}`:\n```'
+                reply = reply + tabulate(balance)
+                reply = reply + '\n```\n'
             except Exception:
                 reply = '❗ gaia could not handle your request'
         else:
@@ -120,7 +121,6 @@ async def faucet_status(message, testnet: dict):
                 f'Node moniker:      {node_status["moniker"]}\n' \
                 f'Node last block:   {node_status["last_block"]}\n' \
                 f'Faucet address:    {testnet["faucet_address"]}\n' \
-                f'Faucet balance:    {balance["amount"]}{balance["denom"]}' \
                 f'```'
             reply = status
     except Exception:

@@ -9,6 +9,7 @@ gaiad utility functions
 import json
 import subprocess
 import logging
+import re
 
 
 def check_address(address: str):
@@ -47,9 +48,14 @@ def get_balance(address: str, node: str, chain_id: str):
     try:
         balance.check_returncode()
         account_balance = balance.stdout
-        faucet_coins = {'amount': account_balance.split('\n')[1].split(' ')[2].split('"')[1],
-                        'denom': account_balance.split('\n')[2].split(' ')[3]}
-        return faucet_coins
+        balances = re.findall(r'amount: "[0-9]+"\n  denom: [a-z]+', account_balance)
+        coins = []
+        for balance in balances:
+            denom = re.sub('amount:\s+"\d+"\n\s+denom:\s+','',balance)
+            amount_leading_trim = re.sub('amount:\s+"','',balance)
+            amount_string = re.sub('"\n\s+denom:\s+\w+','',amount_leading_trim, flags=re.IGNORECASE)
+            coins.append({'amount': amount_string, 'denom': denom})
+        return coins
     except subprocess.CalledProcessError as cpe:
         output = str(balance.stderr).split('\n')[0]
         logging.error("Called Process Error: %s, stderr: %s", cpe, output)
