@@ -48,12 +48,14 @@ def get_balance(address: str, node: str, chain_id: str):
     try:
         balance.check_returncode()
         account_balance = balance.stdout
-        balances = re.findall(r'amount: "[0-9]+"\n  denom: [a-z]+', account_balance)
+        balances = re.findall(
+            r'amount: "[0-9]+"\n  denom: [a-z]+', account_balance)
         coins = []
         for balance in balances:
-            denom = re.sub('amount:\s+"\d+"\n\s+denom:\s+','',balance)
-            amount_leading_trim = re.sub('amount:\s+"','',balance)
-            amount_string = re.sub('"\n\s+denom:\s+\w+','',amount_leading_trim, flags=re.IGNORECASE)
+            denom = re.sub('amount:\s+"\d+"\n\s+denom:\s+', '', balance)
+            amount_leading_trim = re.sub('amount:\s+"', '', balance)
+            amount_string = re.sub(
+                '"\n\s+denom:\s+\w+', '', amount_leading_trim, flags=re.IGNORECASE)
             coins.append({'amount': amount_string, 'denom': denom})
         return coins
     except subprocess.CalledProcessError as cpe:
