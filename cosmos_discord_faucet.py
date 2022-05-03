@@ -295,7 +295,7 @@ async def token_request(message, testnet: dict):
                     await message.reply(f'✅ Hash ID: {transfer}')
                 # Get faucet balance and save to transaction log
                 balance = await get_faucet_balance(testnet)
-                await save_transaction_statistics(f'{now.strftime("%Y-%m-%d,%H:%M:%S")},'
+                await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
                                                   f'{testnet["name"]},{address},'
                                                   f'{testnet["amount_to_send"] + DENOM},'
                                                   f'{transfer},'
