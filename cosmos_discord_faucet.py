@@ -7,8 +7,8 @@ Sets up a Discord bot to provide info and tokens
 import time
 import datetime
 import logging
-from tabulate import tabulate
 import sys
+from tabulate import tabulate
 import aiofiles as aiof
 import toml
 import discord
@@ -69,6 +69,19 @@ async def save_transaction_statistics(transaction: str):
     async with aiof.open('transactions.csv', 'a') as csv_file:
         await csv_file.write(f'{transaction}\n')
         await csv_file.flush()
+
+
+async def get_faucet_balance(testnet: dict):
+    """
+    Returns the uatom balance
+    """
+    balances = gaia.get_balance(
+        address=testnet['faucet_address'],
+        node=testnet['node_url'],
+        chain_id=testnet['chain_id'])
+    for balance in balances:
+        if balance['denom'] == 'uatom':
+            return balance['amount']+'uatom'
 
 
 async def balance_request(message, testnet: dict):
@@ -276,14 +289,17 @@ async def token_request(message, testnet: dict):
                 logging.info('%s requested tokens for %s in %s',
                              requester, address, testnet['name'])
                 now = datetime.datetime.now()
-                await save_transaction_statistics(f'{now.strftime("%Y-%m-%d,%H:%M:%S")},'
-                                                  f'{testnet["name"]},{address},'
-                                                  f'{testnet["amount_to_send"] + DENOM},'
-                                                  f'{transfer}')
                 if testnet["block_explorer_tx"]:
                     await message.reply(f'✅  <{testnet["block_explorer_tx"]}{transfer}>')
                 else:
                     await message.reply(f'✅ Hash ID: {transfer}')
+                # Get faucet balance and save to transaction log
+                balance = await get_faucet_balance(testnet)
+                await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
+                                                  f'{testnet["name"]},{address},'
+                                                  f'{testnet["amount_to_send"] + DENOM},'
+                                                  f'{transfer},'
+                                                  f'{balance}')
             except Exception:
                 await message.reply('❗ request could not be processed')
                 del ACTIVE_REQUESTS[testnet['name']][requester.id]
@@ -325,7 +341,8 @@ async def on_message(message):
 
     # Notify users of vega shutdown
     if message.content[0] == ('$') and 'vega' in message.content.lower():
-        await message.reply(f'The Vega testnet is no longer active as of April 14, 2022. Please use Theta instead.')
+        await message.reply('The Vega testnet is no longer active as of April 14, 2022. '
+                            'Please use Theta instead.')
         return
 
     # Respond to commands

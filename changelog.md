@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5
+
+- The transactions log includes the faucet balance.
+- The transactions log uses the Python ISO date-time format.
+
 ## v0.4
 
 - The `$balance` command now responds with all the available denoms in an account.
