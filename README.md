@@ -38,7 +38,9 @@ This bot can be run stand-alone (mostly for testing), or as a service.
 
 ### Stand-alone
 
-`python cosmos_discord_faucet.py`
+```
+python cosmos_discord_faucet.py
+```
 
 - This can be run inside a `tmux` session.
 
@@ -72,6 +74,30 @@ systemctl status cosmos-discord-faucet.service
 5. Request the address balance:  
 `$balance [cosmos address] theta|devnet`  
 
+
+## Analytics
+
+The `transactions.csv` file can be parsed using `cosmos_faucet_analytics.py` to output faucet usage analytics to a Node Exporter-compatible file.
+
+### Analytics Usage
+
+```
+python cosmos_faucet_analytics.py transactions.csv /opt/node_exporter/textfiles/stats.prom 60
+```
+- This will analyze the `transactions.csv` file and output the results to the `stats.prom` file every 60 seconds.
+- This can be run inside a `tmux` session.
+
+### Analytics Service
+
+1. Modify the `cosmos-faucet-analytics.service` file as appropriate.
+2. Make a copy of `cosmos-faucet-analytics.service` or create a link to it in `/etc/systemd/system/`.
+3. Enable and start the service:
+```
+systemctl daemon-reload
+systemctl enable cosmos-faucet-analytics.service
+systemctl start cosmos-faucet-analytics.service
+systemctl status cosmos-faucet-analytics.service
+```
 
 ## Acknowledgements
 
