@@ -17,7 +17,9 @@ Outputs per chain:
 """
 
 import sys
+import logging
 from time import sleep
+import toml
 from cosmos_transaction_reader import TransactionReader
 
 
@@ -27,9 +29,8 @@ class FaucetAnalytics():
     """
 
     def __init__(self,
-                 txs_filename: str = '~/cosmos-discord-faucet/transactions.csv',
-                 prom_filename: str = '/opt/node_exporter/' +
-                 'textfiles/FAUCET_STATS.prom',
+                 txs_filename: str,
+                 prom_filename: str,
                  seconds_to_update: int = 60):
         self._faucets_dict = {}
         self._txs_filename = txs_filename
@@ -54,6 +55,7 @@ class FaucetAnalytics():
                         f'{value}\n'
                     lines.append(line)
             log_file.writelines(lines)
+        logging.info("Updated Node Exporter log")
 
     def start(self):
         """
@@ -65,9 +67,22 @@ class FaucetAnalytics():
 
 
 if __name__ == '__main__':
-    args = sys.argv
-    if len(args) > 3:
-        logger = FaucetAnalytics(txs_filename=args[1],
-                                   prom_filename=args[2],
-                                   seconds_to_update=int(args[3]))
-        logger.start()
+    # Configure Logging
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(levelname)s %(message)s')
+
+    # Load config
+    config = toml.load('config_analytics.toml')
+    try:
+        tx_log = config['transactions_log']
+        ne_log = config['node_exporter_log']
+        period = int(config['period'])
+    except KeyError as key:
+        logging.critical('Key could not be found: %s', key)
+        sys.exit()
+
+    # Start logging
+    logger = FaucetAnalytics(txs_filename=tx_log,
+                             prom_filename=ne_log,
+                             seconds_to_update=period)
+    logger.start()
