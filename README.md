@@ -60,7 +60,7 @@ systemctl status cosmos-discord-faucet.service
 
 1. Request tokens through the faucet:  
 `$request [cosmos address] theta|devnet`
-- A ✅ means the transaction was successful
+   - The response will include a ✅ and the transaction hash if it was successful.
 
 2. Request the faucet and node status:  
 `$faucet_status theta|devnet`
