@@ -81,10 +81,16 @@ The `transactions.csv` file can be parsed using `cosmos_faucet_analytics.py` to 
 
 ### Analytics Usage
 
+The analytics script can be run stand-alone (mostly for testing), or as a service.
+
+- Modify the log paths and logging period in `config_analytics.toml` as required. 
+
+### Analytics Stand-alone
+
 ```
-python cosmos_faucet_analytics.py transactions.csv /opt/node_exporter/textfiles/stats.prom 60
+python cosmos_faucet_analytics.py
 ```
-- This will analyze the `transactions.csv` file and output the results to the `stats.prom` file every 60 seconds.
+
 - This can be run inside a `tmux` session.
 
 ### Analytics Service
