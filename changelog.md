@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.0
+
+- Added analytics logic.
+- The resulting log file is compatible with Node Exporter.
+
 ## v0.5
 
 - The transactions log includes the faucet balance.

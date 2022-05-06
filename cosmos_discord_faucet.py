@@ -37,7 +37,7 @@ try:
         testnets[net]['name'] = net
         testnets[net]["active_day"] = datetime.datetime.today().date()
         testnets[net]["day_tally"] = 0
-    ACTIVE_REQUESTS = {net: dict() for net in testnets}
+    ACTIVE_REQUESTS = {net: {} for net in testnets}
     TESTNET_OPTIONS = '|'.join(list(testnets.keys()))
 except KeyError as key:
     logging.critical('Key could not be found: %s', key)

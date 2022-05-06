@@ -1,0 +1,7 @@
+# Cosmos Faucet Analytics configuration
+
+transactions_log    = "transactions.csv"
+node_exporter_log   = "FAUCET_STATS.prom"
+
+# period is the number of seconds to wait between updates
+period              = "60"
