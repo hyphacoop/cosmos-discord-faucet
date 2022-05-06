@@ -2,7 +2,8 @@
 
 ## v0.6.0
 
-- Analytics through Node Exporter-compatible log.
+- Added analytics logic.
+- The resulting log file is compatible with Node Exporter.
 
 ## v0.5
 
