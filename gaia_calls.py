@@ -9,7 +9,6 @@ gaiad utility functions
 import json
 import subprocess
 import logging
-import re
 
 
 def check_address(address: str):
@@ -17,16 +16,15 @@ def check_address(address: str):
     gaiad keys parse <address>
     """
     check = subprocess.run(["gaiad", "keys", "parse",
-                            f"{address}"],
+                            f"{address}",
+                            '--output=json'],
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            text=True)
     try:
         check.check_returncode()
-        address_dict = {entry.split(': ')[0]: entry.split(
-            ': ')[1] for entry in check.stdout.split('\n')[:2]}
-        return address_dict
+        return json.loads(check.stdout[:-1])
     except subprocess.CalledProcessError as cpe:
-        output = str(check.stderr).split('\n')[0]
+        output = str(check.stderr).split('\n', maxsplit=1)
         logging.error("Called Process Error: %s, stderr: %s", cpe, output)
         raise cpe
     except IndexError as index_error:
@@ -42,24 +40,15 @@ def get_balance(address: str, node: str, chain_id: str):
     balance = subprocess.run(["gaiad", "query", "bank", "balances",
                               f"{address}",
                               f"--node={node}",
-                              f"--chain-id={chain_id}"],
+                              f"--chain-id={chain_id}",
+                              '--output=json'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              text=True)
     try:
         balance.check_returncode()
-        account_balance = balance.stdout
-        balances = re.findall(
-            r'amount: "[0-9]+"\n  denom: [a-z]+', account_balance)
-        coins = []
-        for balance in balances:
-            denom = re.sub('amount:\s+"\d+"\n\s+denom:\s+', '', balance)
-            amount_leading_trim = re.sub('amount:\s+"', '', balance)
-            amount_string = re.sub(
-                '"\n\s+denom:\s+\w+', '', amount_leading_trim, flags=re.IGNORECASE)
-            coins.append({'amount': amount_string, 'denom': denom})
-        return coins
+        return json.loads(balance.stdout)['balances']
     except subprocess.CalledProcessError as cpe:
-        output = str(balance.stderr).split('\n')[0]
+        output = str(balance.stderr).split('\n', maxsplit=1)
         logging.error("Called Process Error: %s, stderr: %s", cpe, output)
         raise cpe
     except IndexError as index_error:
@@ -86,7 +75,7 @@ def get_node_status(node: str):
         node_status['syncs'] = status['SyncInfo']['catching_up']
         return node_status
     except subprocess.CalledProcessError as cpe:
-        output = str(status.stderr).split('\n')[0]
+        output = str(status.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except KeyError as key:
@@ -101,33 +90,37 @@ def get_tx_info(hash_id: str, node: str, chain_id: str):
     tx_gaia = subprocess.run(['gaiad', 'query', 'tx',
                               f'{hash_id}',
                               f'--node={node}',
-                              f'--chain-id={chain_id}'],
+                              f'--chain-id={chain_id}',
+                              '--output=json'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         tx_gaia.check_returncode()
-        tx_response = tx_gaia.stdout
-        tx_lines = tx_response.split('\n')
-        for line in tx_lines:
-            if 'raw_log' in line:
-                line = line.replace("raw_log: '[", '')
-                line = line[:-2]
-                log = json.loads(line)
-                transfer = log['events'][3]
-                tx_out = {}
-                tx_out['recipient'] = transfer['attributes'][0]['value']
-                tx_out['sender'] = transfer['attributes'][1]['value']
-                tx_out['amount'] = transfer['attributes'][2]['value']
-                return tx_out
-        logging.error(
-            "'raw_log' line was not found in response:\n%s", tx_response)
-        return None
+        tx_response = json.loads(tx_gaia.stdout)
+        tx_body = tx_response['tx']['body']['messages'][0]
+        tx_out = {}
+        tx_out['height'] = tx_response['height']
+        if 'from_address' in tx_body.keys():
+            tx_out['sender'] = tx_body['from_address']
+            tx_out['receiver'] = tx_body['to_address']
+            tx_out['amount'] = tx_body['amount'][0]['amount'] + \
+                tx_body['amount'][0]['denom']
+        elif 'sender' in tx_body.keys():
+            tx_out['sender'] = tx_body['sender']
+            tx_out['receiver'] = tx_body['receiver']
+            tx_out['amount'] = tx_body['token']['amount'] + \
+                tx_body['token']['denom']
+        else:
+            logging.error(
+                "Neither 'from_address' nor 'sender' key was found in response body:\n%s", tx_body)
+            return None
+        return tx_out
     except subprocess.CalledProcessError as cpe:
-        output = str(tx_gaia.stderr).split('\n')[0]
+        output = str(tx_gaia.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except (TypeError, KeyError) as err:
-        logging.critical('Could not read %s in raw log: %s', err, log)
-        raise KeyError
+        logging.critical('Could not read %s in raw log.', err)
+        raise KeyError from err
 
 
 def tx_send(request: dict):
@@ -152,16 +145,15 @@ def tx_send(request: dict):
                               f'--node={request["node"]}',
                               f'--chain-id={request["chain_id"]}',
                               '--keyring-backend=test',
+                              '--output=json',
                               '-y'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         tx_gaia.check_returncode()
-        if 'coin_received' in tx_gaia.stdout:
-            for line in tx_gaia.stdout.split('\n'):
-                if 'txhash' in line:
-                    return line.replace('txhash: ', '')
+        response = json.loads(tx_gaia.stdout)
+        return response['txhash']
     except subprocess.CalledProcessError as cpe:
-        output = str(tx_gaia.stderr).split('\n')[0]
+        output = str(tx_gaia.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except (TypeError, KeyError) as err:

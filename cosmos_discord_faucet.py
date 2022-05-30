@@ -161,8 +161,9 @@ async def transaction_info(message, testnet: dict):
                 chain_id=testnet['chain_id'])
             reply = f'```' \
                 f'From:    {res["sender"]}\n' \
-                f'To:      {res["recipient"]}\n' \
-                f'Amount:  {res["amount"]}\n```'
+                f'To:      {res["receiver"]}\n' \
+                f'Amount:  {res["amount"]}\n' \
+                f'Height:  {res["height"]}\n```'
 
         except Exception:
             reply = '❗ gaia could not handle your request'

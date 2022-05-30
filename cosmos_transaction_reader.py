@@ -140,6 +140,6 @@ class TransactionReader():
         Parses the CSV file populating self._txs and self._stats
         """
         self._txs = []
-        with open(self._filename, 'r', newline='') as csvfile:
+        with open(self._filename, 'r', newline='', encoding='utf-8') as csvfile:
             data = list(csv.reader(csvfile, delimiter=','))
         self._data = np.array(data)
