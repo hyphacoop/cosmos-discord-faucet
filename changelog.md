@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.2
+
+- Incorrect chain names are ignored.
+
+## v0.6.1
+
+- Gaia calls are made with the '--output=json' flag.
+- IBC denoms are now displayed in the '$balance' message reply. 
+
 ## v0.6.0
 
 - Added analytics logic.
