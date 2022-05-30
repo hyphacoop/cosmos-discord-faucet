@@ -347,22 +347,20 @@ async def on_message(message):
         return
 
     # Respond to commands
-    for name in list(testnets.keys()):
-        if name in message.content:
-            testnet = testnets[name]
-            # Dispatch message to appropriate handler
-            if message.content.startswith('$faucet_address'):
-                await message.reply(f'The {testnet["name"]} faucet has address'
-                                    f'  `{testnet["faucet_address"]}`')
-            elif message.content.startswith('$balance'):
-                await balance_request(message, testnet)
-            elif message.content.startswith('$faucet_status'):
-                await faucet_status(message, testnet)
-            elif message.content.startswith('$tx_info'):
-                await transaction_info(message, testnet)
-            elif message.content.startswith('$request'):
-                await token_request(message, testnet)
-            break
-
+    message_chain = message.content.split()[-1]
+    if message_chain in list(testnets.keys()):
+        testnet = testnets[message_chain]
+        # Dispatch message to appropriate handler
+        if message.content.startswith('$faucet_address'):
+            await message.reply(f'The {testnet["name"]} faucet has address'
+                                f'  `{testnet["faucet_address"]}`')
+        elif message.content.startswith('$balance'):
+            await balance_request(message, testnet)
+        elif message.content.startswith('$faucet_status'):
+            await faucet_status(message, testnet)
+        elif message.content.startswith('$tx_info'):
+            await transaction_info(message, testnet)
+        elif message.content.startswith('$request'):
+            await token_request(message, testnet)
 
 client.run(DISCORD_TOKEN)
