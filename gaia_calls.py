@@ -9,7 +9,6 @@ gaiad utility functions
 import json
 import subprocess
 import logging
-import re
 
 
 def check_address(address: str):
@@ -25,7 +24,7 @@ def check_address(address: str):
         check.check_returncode()
         return json.loads(check.stdout[:-1])
     except subprocess.CalledProcessError as cpe:
-        output = str(check.stderr).split('\n')[0]
+        output = str(check.stderr).split('\n', maxsplit=1)
         logging.error("Called Process Error: %s, stderr: %s", cpe, output)
         raise cpe
     except IndexError as index_error:
@@ -49,7 +48,7 @@ def get_balance(address: str, node: str, chain_id: str):
         balance.check_returncode()
         return json.loads(balance.stdout)['balances']
     except subprocess.CalledProcessError as cpe:
-        output = str(balance.stderr).split('\n')[0]
+        output = str(balance.stderr).split('\n', maxsplit=1)
         logging.error("Called Process Error: %s, stderr: %s", cpe, output)
         raise cpe
     except IndexError as index_error:
@@ -76,7 +75,7 @@ def get_node_status(node: str):
         node_status['syncs'] = status['SyncInfo']['catching_up']
         return node_status
     except subprocess.CalledProcessError as cpe:
-        output = str(status.stderr).split('\n')[0]
+        output = str(status.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except KeyError as key:
@@ -99,27 +98,29 @@ def get_tx_info(hash_id: str, node: str, chain_id: str):
         tx_response = json.loads(tx_gaia.stdout)
         tx_body = tx_response['tx']['body']['messages'][0]
         tx_out = {}
-        tx_out['height'] = height = tx_response['height']
+        tx_out['height'] = tx_response['height']
         if 'from_address' in tx_body.keys():
             tx_out['sender'] = tx_body['from_address']
             tx_out['receiver'] = tx_body['to_address']
-            tx_out['amount'] = tx_body['amount'][0]['amount']+ tx_body['amount'][0]['denom']
+            tx_out['amount'] = tx_body['amount'][0]['amount'] + \
+                tx_body['amount'][0]['denom']
         elif 'sender' in tx_body.keys():
             tx_out['sender'] = tx_body['sender']
             tx_out['receiver'] = tx_body['receiver']
-            tx_out['amount'] = tx_body['token']['amount']+ tx_body['token']['denom']
+            tx_out['amount'] = tx_body['token']['amount'] + \
+                tx_body['token']['denom']
         else:
             logging.error(
-            "Neither 'from_address' nor 'sender' key was found in response body:\n%s", tx_body)
+                "Neither 'from_address' nor 'sender' key was found in response body:\n%s", tx_body)
             return None
         return tx_out
     except subprocess.CalledProcessError as cpe:
-        output = str(tx_gaia.stderr).split('\n')[0]
+        output = str(tx_gaia.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except (TypeError, KeyError) as err:
-        logging.critical('Could not read %s in raw log: %s', err, log)
-        raise KeyError
+        logging.critical('Could not read %s in raw log.', err)
+        raise KeyError from err
 
 
 def tx_send(request: dict):
@@ -152,7 +153,7 @@ def tx_send(request: dict):
         response = json.loads(tx_gaia.stdout)
         return response['txhash']
     except subprocess.CalledProcessError as cpe:
-        output = str(tx_gaia.stderr).split('\n')[0]
+        output = str(tx_gaia.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except (TypeError, KeyError) as err:

@@ -3,7 +3,7 @@
 Parses transactions and writes to a
 Node Exporter file periodically.
 Usage:
-python cosmos_faucet_analytics.py [transaction log file] [node exporter textfile] [period in seconds]
+python cosmos_faucet_analytics.py [tx log file] [node exporter textfile] [period in seconds]
 Example:
 python cosmos_faucet_analytics.py transactions.csv /opt/node_exporter/textfiles/faucet_stats.prom 60
 Outputs per chain:
