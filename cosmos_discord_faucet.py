@@ -38,7 +38,6 @@ try:
         testnets[net]["active_day"] = datetime.datetime.today().date()
         testnets[net]["day_tally"] = 0
     ACTIVE_REQUESTS = {net: {} for net in testnets}
-    TESTNET_OPTIONS = '|'.join(list(testnets.keys()))
 except KeyError as key:
     logging.critical('Key could not be found: %s', key)
     sys.exit()
@@ -46,17 +45,17 @@ except KeyError as key:
 APPROVE_EMOJI = '✅'
 REJECT_EMOJI = '🚫'
 
-help_msg = '**List of available commands:**\n' \
+HELP_MSG = '**List of available commands:**\n' \
     '1. Request tokens through the faucet:\n' \
-    f'`$request [cosmos address] {TESTNET_OPTIONS}`\n\n' \
+    '`$request [cosmos address]`\n\n' \
     '2. Request the faucet and node status:\n' \
-    f'`$faucet_status {TESTNET_OPTIONS}`\n\n' \
+    '`$faucet_status`\n\n' \
     '3. Request the faucet address: \n' \
-    f'`$faucet_address {TESTNET_OPTIONS}`\n\n' \
+    '`$faucet_address`\n\n' \
     '4. Request information for a specific transaction:\n'\
-    f'`$tx_info [transaction hash ID] {TESTNET_OPTIONS}`\n\n' \
+    '`$tx_info [transaction hash ID]`\n\n' \
     '5. Request the address balance:\n' \
-    f'`$balance [cosmos address] {TESTNET_OPTIONS}`'
+    '`$balance [cosmos address]`'
 
 
 client = discord.Client()
@@ -90,12 +89,10 @@ async def balance_request(message, testnet: dict):
     """
     reply = ''
     # Extract address
-    address = str(message.content).split()
-    if len(address) != 3:
-        await message.reply(help_msg)
-    address.remove(testnet['name'])
-    address.remove('$balance')
-    address = address[0]
+    message_sections = str(message.content).split()
+    if len(message_sections) != 2:
+        await message.reply(HELP_MSG)
+    address = message_sections[1]
 
     try:
         # check address is valid
@@ -106,7 +103,7 @@ async def balance_request(message, testnet: dict):
                     address=address,
                     node=testnet["node_url"],
                     chain_id=testnet["chain_id"])
-                reply = f'Balance for address `{address}` in testnet `{testnet["name"]}`:\n```'
+                reply = f'Balance for address `{address}` in chain `{testnet["chain_id"]}`:\n```'
                 reply = reply + tabulate(balance)
                 reply = reply + '\n```\n'
             except Exception:
@@ -147,12 +144,10 @@ async def transaction_info(message, testnet: dict):
     """
     reply = ''
     # Extract hash ID
-    hash_id = str(message.content).split()
-    if len(hash_id) != 3:
-        return help_msg
-    hash_id.remove(testnet['name'])
-    hash_id.remove('$tx_info')
-    hash_id = hash_id[0]
+    message_sections = str(message.content).split()
+    if len(message_sections) != 2:
+        return HELP_MSG
+    hash_id = message_sections[1]
     if len(hash_id) == 64:
         try:
             res = gaia.get_tx_info(
@@ -253,12 +248,10 @@ async def token_request(message, testnet: dict):
     Send tokens to the specified address
     """
     # Extract address
-    address = str(message.content).lower().split()
-    if len(address) != 3:
-        await message.reply(help_msg)
-    address.remove(testnet['name'])
-    address.remove('$request')
-    address = address[0]
+    message_sections = str(message.content).lower().split()
+    if len(message_sections) != 2:
+        await message.reply(HELP_MSG)
+    address = message_sections[1]
 
     # Check address
     try:
@@ -337,30 +330,21 @@ async def on_message(message):
 
     # Respond to $help
     if message.content.startswith('$help'):
-        await message.reply(help_msg)
+        await message.reply(HELP_MSG)
         return
 
-    # Notify users of vega shutdown
-    if message.content[0] == ('$') and 'vega' in message.content.lower():
-        await message.reply('The Vega testnet is no longer active as of April 14, 2022. '
-                            'Please use Theta instead.')
-        return
-
-    # Respond to commands
-    message_chain = message.content.split()[-1]
-    if message_chain in list(testnets.keys()):
-        testnet = testnets[message_chain]
-        # Dispatch message to appropriate handler
-        if message.content.startswith('$faucet_address'):
-            await message.reply(f'The {testnet["name"]} faucet has address'
-                                f'  `{testnet["faucet_address"]}`')
-        elif message.content.startswith('$balance'):
-            await balance_request(message, testnet)
-        elif message.content.startswith('$faucet_status'):
-            await faucet_status(message, testnet)
-        elif message.content.startswith('$tx_info'):
-            await transaction_info(message, testnet)
-        elif message.content.startswith('$request'):
-            await token_request(message, testnet)
+    testnet = testnets['public']
+    # Dispatch message to appropriate handler
+    if message.content.startswith('$faucet_address'):
+        await message.reply(f'The {testnet["name"]} faucet has address'
+                            f'  `{testnet["faucet_address"]}`')
+    elif message.content.startswith('$balance'):
+        await balance_request(message, testnet)
+    elif message.content.startswith('$faucet_status'):
+        await faucet_status(message, testnet)
+    elif message.content.startswith('$tx_info'):
+        await transaction_info(message, testnet)
+    elif message.content.startswith('$request'):
+        await token_request(message, testnet)
 
 client.run(DISCORD_TOKEN)
