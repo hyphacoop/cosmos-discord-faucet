@@ -5,6 +5,7 @@ verbose        = "yes"
 [dymension]
 prefix         = "dym"
 denomination   = "udym"
+executable     = "dymd"
 
 [testnets]
     [testnets.c-35]

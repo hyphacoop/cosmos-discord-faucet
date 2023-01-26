@@ -9,13 +9,22 @@ dymd utility functions
 import json
 import subprocess
 import logging
+import toml
 
+# Load config
+config = toml.load('config.toml')
+
+try:
+    EXECUTABLE = config['dymension']['executable']
+except KeyError as key:
+    logging.error('Key not found in config: %s', key)
+    raise key
 
 def check_address(address: str):
     """
     dymd keys parse <address>
     """
-    check = subprocess.run(["dymd", "keys", "parse",
+    check = subprocess.run([EXECUTABLE, "keys", "parse",
                             f"{address}",
                             '--output=json'],
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -37,7 +46,7 @@ def get_balance(address: str, node: str, chain_id: str):
     """
     dymd query bank balances <address> <node> <chain-id>
     """
-    balance = subprocess.run(["dymd", "query", "bank", "balances",
+    balance = subprocess.run([EXECUTABLE, "query", "bank", "balances",
                               f"{address}",
                               f"--node={node}",
                               f"--chain-id={chain_id}",
@@ -62,7 +71,7 @@ def get_node_status(node: str):
     dymd status <node>
     """
     status = subprocess.run(
-        ['dymd', 'status', f'--node={node}'],
+        [EXECUTABLE, 'status', f'--node={node}'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     try:
@@ -87,7 +96,7 @@ def get_tx_info(hash_id: str, node: str, chain_id: str):
     """
     dymd query tx <tx-hash> <node> <chain-id>
     """
-    tx_dymension = subprocess.run(['dymd', 'query', 'tx',
+    tx_dymension = subprocess.run([EXECUTABLE, 'query', 'tx',
                               f'{hash_id}',
                               f'--node={node}',
                               f'--chain-id={chain_id}',
@@ -137,7 +146,7 @@ def tx_send(request: dict):
                        --keyring-backend=test -y
 
     """
-    tx_dymension = subprocess.run(['dymd', 'tx', 'bank', 'send',
+    tx_dymension = subprocess.run([EXECUTABLE, 'tx', 'bank', 'send',
                               f'{request["sender"]}',
                               f'{request["recipient"]}',
                               f'{request["amount"]}',
