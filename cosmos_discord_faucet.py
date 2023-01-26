@@ -73,15 +73,15 @@ async def save_transaction_statistics(transaction: str):
 
 async def get_faucet_balance(testnet: dict):
     """
-    Returns the uatom balance
+    Returns the udym balance
     """
     balances = dymension.get_balance(
         address=testnet['faucet_address'],
         node=testnet['node_url'],
         chain_id=testnet['chain_id'])
     for balance in balances:
-        if balance['denom'] == 'uatom':
-            return balance['amount']+'uatom'
+        if balance['denom'] == 'udym':
+            return balance['amount']+'udym'
 
 
 async def balance_request(message, testnet: dict):
