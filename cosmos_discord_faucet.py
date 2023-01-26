@@ -12,7 +12,7 @@ from tabulate import tabulate
 import aiofiles as aiof
 import toml
 import discord
-import gaia_calls as gaia
+import dymension_calls as dymension
 
 # Turn Down Discord Logging
 disc_log = logging.getLogger('discord')
@@ -26,12 +26,12 @@ logging.basicConfig(level=logging.INFO,
 config = toml.load('config.toml')
 
 try:
-    ADDRESS_PREFIX = config['cosmos']['prefix']
+    ADDRESS_PREFIX = config['dymension']['prefix']
     REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
     DISCORD_TOKEN = str(config['discord']['bot_token'])
     LISTENING_CHANNELS = list(
         config['discord']['channels_to_listen'].split(','))
-    DENOM = str(config['cosmos']['denomination'])
+    DENOM = str(config['dymension']['denomination'])
     testnets = config['testnets']
     for net in testnets:
         testnets[net]['name'] = net
@@ -48,7 +48,7 @@ REJECT_EMOJI = '🚫'
 
 help_msg = '**List of available commands:**\n' \
     '1. Request tokens through the faucet:\n' \
-    f'`$request [cosmos address] {TESTNET_OPTIONS}`\n\n' \
+    f'`$request [dymension address] {TESTNET_OPTIONS}`\n\n' \
     '2. Request the faucet and node status:\n' \
     f'`$faucet_status {TESTNET_OPTIONS}`\n\n' \
     '3. Request the faucet address: \n' \
@@ -56,10 +56,10 @@ help_msg = '**List of available commands:**\n' \
     '4. Request information for a specific transaction:\n'\
     f'`$tx_info [transaction hash ID] {TESTNET_OPTIONS}`\n\n' \
     '5. Request the address balance:\n' \
-    f'`$balance [cosmos address] {TESTNET_OPTIONS}`'
+    f'`$balance [dymension address] {TESTNET_OPTIONS}`'
 
-
-client = discord.Client()
+intents = discord.Intents.all()
+client = discord.Client(intents=intents)
 
 
 async def save_transaction_statistics(transaction: str):
@@ -75,7 +75,7 @@ async def get_faucet_balance(testnet: dict):
     """
     Returns the uatom balance
     """
-    balances = gaia.get_balance(
+    balances = dymension.get_balance(
         address=testnet['faucet_address'],
         node=testnet['node_url'],
         chain_id=testnet['chain_id'])
@@ -99,10 +99,10 @@ async def balance_request(message, testnet: dict):
 
     try:
         # check address is valid
-        result = gaia.check_address(address)
+        result = dymension.check_address(address)
         if result['human'] == ADDRESS_PREFIX:
             try:
-                balance = gaia.get_balance(
+                balance = dymension.get_balance(
                     address=address,
                     node=testnet["node_url"],
                     chain_id=testnet["chain_id"])
@@ -110,11 +110,11 @@ async def balance_request(message, testnet: dict):
                 reply = reply + tabulate(balance)
                 reply = reply + '\n```\n'
             except Exception:
-                reply = '❗ gaia could not handle your request'
+                reply = '❗ dymension could not handle your request'
         else:
             reply = f'❗ Expected `{ADDRESS_PREFIX}` prefix'
     except Exception:
-        reply = '❗ gaia could not verify the address'
+        reply = '❗ dymension could not verify the address'
     await message.reply(reply)
 
 
@@ -124,8 +124,8 @@ async def faucet_status(message, testnet: dict):
     """
     reply = ''
     try:
-        node_status = gaia.get_node_status(node=testnet['node_url'])
-        balance = gaia.get_balance(
+        node_status = dymension.get_node_status(node=testnet['node_url'])
+        balance = dymension.get_balance(
             address=testnet['faucet_address'],
             node=testnet['node_url'],
             chain_id=testnet['chain_id'])
@@ -137,7 +137,7 @@ async def faucet_status(message, testnet: dict):
                 f'```'
             reply = status
     except Exception:
-        reply = '❗ gaia could not handle your request'
+        reply = '❗ dymension could not handle your request'
     await message.reply(reply)
 
 
@@ -155,7 +155,7 @@ async def transaction_info(message, testnet: dict):
     hash_id = hash_id[0]
     if len(hash_id) == 64:
         try:
-            res = gaia.get_tx_info(
+            res = dymension.get_tx_info(
                 hash_id=hash_id,
                 node=testnet['node_url'],
                 chain_id=testnet['chain_id'])
@@ -166,7 +166,7 @@ async def transaction_info(message, testnet: dict):
                 f'Height:  {res["height"]}\n```'
 
         except Exception:
-            reply = '❗ gaia could not handle your request'
+            reply = '❗ dymension could not handle your request'
     else:
         reply = f'❗ Hash ID must be 64 characters long, received `{len(hash_id)}`'
     await message.reply(reply)
@@ -263,12 +263,12 @@ async def token_request(message, testnet: dict):
     # Check address
     try:
         # check address is valid
-        result = gaia.check_address(address)
+        result = dymension.check_address(address)
         if result['human'] != ADDRESS_PREFIX:
             await message.reply(f'❗ Expected `{ADDRESS_PREFIX}` prefix')
             return
     except Exception:
-        await message.reply('❗ gaia could not verify the address')
+        await message.reply('❗ dymension could not verify the address')
         return
 
     requester = message.author
@@ -285,8 +285,8 @@ async def token_request(message, testnet: dict):
                        'chain_id': testnet['chain_id'],
                        'node': testnet['node_url']}
             try:
-                # Make gaia call and send the response back
-                transfer = gaia.tx_send(request)
+                # Make dymension call and send the response back
+                transfer = dymension.tx_send(request)
                 logging.info('%s requested tokens for %s in %s',
                              requester, address, testnet['name'])
                 now = datetime.datetime.now()
@@ -334,7 +334,8 @@ async def on_message(message):
     # Only listen in specific channels, and do not listen to your own messages
     if (message.channel.name not in LISTENING_CHANNELS) or (message.author == client.user):
         return
-
+#    channel = message.channel
+#    await channel.send('Say hello!')
     # Respond to $help
     if message.content.startswith('$help'):
         await message.reply(help_msg)

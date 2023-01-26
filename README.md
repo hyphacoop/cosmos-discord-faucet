@@ -14,9 +14,9 @@ A Discord bot for dispensing testnet tokens.
 ## Requirements
 
 - python 3.8.12+
-- gaia v6.0.3+
-- Initialized gaia instance
-- Faucet keys in gaia keyring
+- dymension v
+- Initialized dymension instance
+- Faucet keys in dymension keyring
 
 ## Installation
 
@@ -59,7 +59,7 @@ systemctl status cosmos-discord-faucet.service
 ## Discord Commands
 
 1. Request tokens through the faucet:  
-`$request [cosmos address] theta|devnet`
+`$request [dymension address] theta|devnet`
    - The response will include a ✅ and the transaction hash if it was successful.
 
 2. Request the faucet and node status:  
@@ -72,7 +72,7 @@ systemctl status cosmos-discord-faucet.service
 `$tx_info [transaction hash ID] theta|devnet`
 
 5. Request the address balance:  
-`$balance [cosmos address] theta|devnet`  
+`$balance [dymension address] theta|devnet`  
 
 
 ## Analytics
@@ -108,5 +108,5 @@ systemctl status cosmos-faucet-analytics.service
 ## Acknowledgements
 
 This repo is based on [cosmos-discord-faucet](https://github.com/c29r3/cosmos-discord-faucet):
-- The cosmospy library calls have been replaced by calls to `gaiad` to avoid deprecated endpoints and messages.
+- The cosmospy library calls have been replaced by calls to `dymd` to avoid deprecated endpoints and messages.
 - The address prefix has been switched to `cosmos`.
