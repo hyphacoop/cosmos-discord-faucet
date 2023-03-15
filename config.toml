@@ -7,7 +7,7 @@ prefix         = "cosmos"
 denomination   = "uatom"
 
 [testnets]
-    [testnets.public]
+    [testnets.theta]
     node_url = "http://sentry-01.theta-testnet.polypore.xyz:26657"
     chain_id = "theta-testnet-001"
     faucet_address = "cosmos15aptdqmm7ddgtcrjvc5hs988rlrkze40l4q0he"

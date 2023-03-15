@@ -249,7 +249,7 @@ async def token_request(message, testnet: dict):
     """
     # Extract address
     message_sections = str(message.content).lower().split()
-    if len(message_sections) != 2:
+    if len(message_sections) < 2:
         await message.reply(HELP_MSG)
     address = message_sections[1]
 
@@ -333,7 +333,7 @@ async def on_message(message):
         await message.reply(HELP_MSG)
         return
 
-    testnet = testnets['public']
+    testnet = testnets['theta']
     # Dispatch message to appropriate handler
     if message.content.startswith('$faucet_address'):
         await message.reply(f'The {testnet["name"]} faucet has address'
