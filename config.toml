@@ -16,15 +16,6 @@ denomination   = "uatom"
     amount_to_send = "10000000"
     tx_fees = "500"
 
-    [testnets.devnet]
-    node_url = "http://one.theta-devnet.polypore.xyz:26657"
-    chain_id = "theta-devnet"
-    faucet_address = "cosmos15aptdqmm7ddgtcrjvc5hs988rlrkze40l4q0he"
-    block_explorer_tx = ""
-    daily_cap = "50000000"
-    amount_to_send = "1000000"
-    tx_fees = "500"
-
 [discord]
 bot_token = ""
 # comma separated list of channels
