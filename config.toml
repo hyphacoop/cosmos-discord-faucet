@@ -1,26 +1,30 @@
 # Cosmos Discord Faucet configuration
 
 verbose        = "yes"
+gaia_home_folder = "~/.gaia"
+transactions_log = "transactions.csv"
 
 [cosmos]
 prefix         = "cosmos"
 denomination   = "uatom"
 
-[testnets]
-    [testnets.theta]
-    node_url = "http://sentry-01.theta-testnet.polypore.xyz:26657"
-    chain_id = "theta-testnet-001"
-    faucet_address = "cosmos15aptdqmm7ddgtcrjvc5hs988rlrkze40l4q0he"
-    block_explorer_tx = "https://explorer.theta-testnet.polypore.xyz/transactions/"
-    daily_cap = "400000000"
-    amount_to_send = "10000000"
-    tx_fees = "500"
+[chains]
+    [chains.test]
+    node_url = "https://rpc.cosmos-chain.com:443"
+    chain_id = "test-1"
+    faucet_address = ""
+    block_explorer_tx = ""
+    daily_cap = "250000000"
+    amount_to_send = "1000"
+    tx_fees = "100"
+    description = "A test chain"
+    website = ""
 
 [discord]
 bot_token = ""
 # comma separated list of channels
-channels_to_listen = "test-channel"
+channels_to_listen = ""
 # how often user can request tokens from faucet (seconds)
 # 10800 = 3  hours
 # 86400 = 24 hours
-request_timeout    = "86400"
+request_timeout  = "86400"

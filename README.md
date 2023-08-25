@@ -13,8 +13,8 @@ A Discord bot for dispensing testnet tokens.
 
 ## Requirements
 
-- python 3.8.12+
-- gaia v6.0.3+
+- python 3.11.12+
+- gaia v11.0.0+
 - Initialized gaia instance
 - Faucet keys in gaia keyring
 
@@ -59,20 +59,20 @@ systemctl status cosmos-discord-faucet.service
 ## Discord Commands
 
 1. Request tokens through the faucet:  
-`$request [cosmos address] theta|devnet`
+`$request [chain] [cosmos address]`
    - The response will include a ✅ and the transaction hash if it was successful.
 
 2. Request the faucet and node status:  
-`$faucet_status theta|devnet`
+`$faucet_status [chain]`
 
 3. Request the faucet address:  
-`$faucet_address theta|devnet`
+`$faucet_address [chain]`
 
 4. Request information for a specific transaction:  
-`$tx_info [transaction hash ID] theta|devnet`
+`$tx_info [chain] [transaction hash ID]`
 
 5. Request the address balance:  
-`$balance [cosmos address] theta|devnet`  
+`$balance [chain] [cosmos address]`  
 
 
 ## Analytics
