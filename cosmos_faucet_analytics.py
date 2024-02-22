@@ -16,10 +16,12 @@ Outputs per chain:
 - Faucet balance.
 """
 
-import sys
 import logging
+import sys
 from time import sleep
+
 import toml
+
 from cosmos_transaction_reader import TransactionReader
 
 
@@ -36,7 +38,7 @@ class FaucetAnalytics():
         self._txs_filename = txs_filename
         self._prom_filename = prom_filename
         self._period = seconds_to_update
-        self._prefix = 'FAUCET_STATS'
+        self._prefix = 'faucet_'
 
     def timer_timeout(self):
         """
@@ -49,10 +51,8 @@ class FaucetAnalytics():
             lines = []
             for chain, stats in self._faucets_dict.items():
                 for stat, value in stats.items():
-                    line = self._prefix + '{src="' + \
-                        f'{chain}_' + \
-                        f'{stat}"' + '} ' + \
-                        f'{value}\n'
+                    line = (self._prefix + stat + '{chain="' +
+                            chain + '"} ' + f'{value}\n')
                     lines.append(line)
             log_file.writelines(lines)
         logging.info("Updated Node Exporter log")
