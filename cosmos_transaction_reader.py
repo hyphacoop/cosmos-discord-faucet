@@ -9,6 +9,7 @@ For example:
 
 import csv
 from datetime import datetime
+
 import numpy as np
 
 
@@ -52,13 +53,13 @@ class TransactionReader():
         """
         for chain in list(np.unique(self._data[:, 1])):
             self._stats[chain] = {
-                'total_requests': 0,
+                'requests_total': 0,
                 'recent_requests': 0,
-                'total_accounts': 0,
+                'accounts_total': 0,
                 'recent_accounts': 0,
-                'total_tokens': 0,
-                'recent_tokens': 0,
-                'faucet_balance': 0
+                'tokens_dispensed_uatom_total': 0,
+                'recent_tokens_dispensed_uatom': 0,
+                'tokens_balance_uatom': 0
             }
 
     def process_total_requests(self):
@@ -70,12 +71,13 @@ class TransactionReader():
         for chain in list(np.unique(self._data[:, 1])):
             mask = (self._data[:, 1] == chain)
             masked_chain = self._data[mask, :]
-            self._stats[chain]['total_requests'] = len(masked_chain)
-            self._stats[chain]['total_accounts'] = len(
+            self._stats[chain]['requests_total'] = len(masked_chain)
+            self._stats[chain]['accounts_total'] = len(
                 np.unique(masked_chain[:, 2]))
             token_array = np.array([int(token.replace('uatom', ''))
                                     for token in masked_chain[:, 3]])
-            self._stats[chain]['total_tokens'] = np.sum(token_array)
+            self._stats[chain]['tokens_dispensed_uatom_total'] = \
+                    np.sum(token_array)
 
     def process_recent_requests(self):
         """
@@ -109,7 +111,8 @@ class TransactionReader():
             # Save the total tokens sent
             token_array = np.array([int(token.replace('uatom', ''))
                                     for token in recent_txs[:, 3]])
-            self._stats[chain]['recent_tokens'] = np.sum(token_array)
+            self._stats[chain]['recent_tokens_dispensed_uatom'] = \
+                    np.sum(token_array)
 
     def process_balance(self):
         """
@@ -119,7 +122,7 @@ class TransactionReader():
         for chain in list(np.unique(self._data[:, 1])):
             chain_mask = (self._data[:, 1] == chain)
             chain_masked_array = self._data[chain_mask, :]
-            self._stats[chain]['faucet_balance'] = \
+            self._stats[chain]['tokens_balance_uatom'] = \
                 int(chain_masked_array[-1][-1].replace('uatom', ''))
 
     def process_stats(self):
