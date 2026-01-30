@@ -69,7 +69,9 @@ COMMAND_LIST = [
     '$balance'
 ]
 
-client = discord.Client()
+intents = discord.Intents.default()
+intents.message_content = True
+client = discord.Client(intents=intents)
 
 
 async def save_transaction_statistics(transaction: str):
@@ -255,11 +257,9 @@ async def token_request(requester, address, chain: dict):
         # check address is valid
         result = gaia.check_address(address)
         if result['human'] != ADDRESS_PREFIX:
-            await message.reply(f'❗ Expected `{ADDRESS_PREFIX}` prefix')
-            return
+            return f'❗ Expected `{ADDRESS_PREFIX}` prefix'
     except Exception:
-        await message.reply('❗ gaia could not verify the address')
-        return
+        return '❗ The address could not be verified'
 
     # Check whether the faucet has reached the daily cap
     if check_daily_cap(chain=chain):

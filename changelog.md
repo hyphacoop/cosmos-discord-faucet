@@ -1,5 +1,9 @@
 # Changelog
 
+## UNRELEASED
+
+- [**BREAKING CHANGE**] Updated `discord.py` to `v2.3.2` ([#35](https://github.com/hyphacoop/cosmos-discord-faucet/pull/35))
+
 ## v0.7.0
 
 - Multi chain support
