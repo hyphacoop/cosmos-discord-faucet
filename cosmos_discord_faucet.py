@@ -412,10 +412,10 @@ async def on_message(message):
             elif command == '$tx_info' and len(message_sections) == 3:
                 hash = message_sections[2]
                 await message.reply(await transaction_info(hash, chain))
-            elif message.content.startswith('$balance') and len(message_sections) == 3:
+            elif command == '$balance' and len(message_sections) == 3:
                 address = message_sections[2]
                 await message.reply(await balance_request(address, chain))
-            elif message.content.startswith('$request') and len(message_sections) == 3:
+            elif command == '$request' and len(message_sections) == 3:
                 requester = message.author
                 address = message_sections[2]
                 await message.reply(await token_request(requester, address, chain))
