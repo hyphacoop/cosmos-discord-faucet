@@ -8,6 +8,7 @@ import time
 import datetime
 import logging
 import sys
+import subprocess
 from tabulate import tabulate
 import aiofiles as aiof
 import toml
@@ -114,11 +115,13 @@ async def balance_request(address, chain: dict):
                 reply = f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```'
                 reply = reply + tabulate(balance)
                 reply = reply + '\n```\n'
-            except Exception:
+            except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
+                logging.error('Balance request failed: %s', ex)
                 reply = '❗ gaia could not handle your request'
         else:
             reply = f'❗ Expected `{ADDRESS_PREFIX}` prefix'
-    except Exception:
+    except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
+        logging.error('Address verification failed: %s', ex)
         reply = '❗ gaia could not verify the address'
     return reply
 
@@ -128,13 +131,10 @@ async def faucet_status(chain: dict):
     Provide node and faucet info
     """
     reply = ''
+    logging.info('Faucet status requested for %s', chain['name'])
     try:
         node_status = gaia.get_node_status(node=chain['node_url'])
-        balance = gaia.get_balance(
-            address=chain['faucet_address'],
-            node=chain['node_url'],
-            chain_id=chain['chain_id'])
-        if node_status.keys() and balance:
+        if node_status.keys():
             status = f'```\n' \
                 f'Node moniker:       {node_status["moniker"]}\n' \
                 f'Node last block:    {node_status["last_block"]}\n' \
@@ -142,7 +142,8 @@ async def faucet_status(chain: dict):
                 f'Amount per request: {chain["amount_to_send"]}{DENOM}\n' \
                 f'```'
             reply = status
-    except Exception:
+    except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
+        logging.error('Faucet status request failed: %s', ex)
         reply = '❗ gaia could not handle your request'
     return reply
 
@@ -159,17 +160,37 @@ async def transaction_info(hash_id, chain: dict):
                 hash_id=hash_id,
                 node=chain['node_url'],
                 chain_id=chain['chain_id'])
+            if res is None:
+                return '❗ Transaction is not of type MsgSend or could not be found'
             reply = f'```' \
                 f'From:    {res["sender"]}\n' \
                 f'To:      {res["receiver"]}\n' \
                 f'Amount:  {res["amount"]}\n' \
                 f'Height:  {res["height"]}\n```'
 
-        except Exception:
+        except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
+            logging.error('Transaction info request failed: %s', ex)
             reply = '❗ gaia could not handle your request'
     else:
         reply = f'❗ Hash ID must be 64 characters long, received `{len(hash_id)}`'
     return reply
+
+
+def format_timeout_message(check_time: float, message_timestamp: float) -> str:
+    """
+    Generate a timeout message based on the time remaining
+    """
+    seconds_left = check_time - message_timestamp
+    minutes_left = seconds_left / 60
+    if minutes_left > 120:
+        wait_time = str(int(minutes_left/60)) + ' hours'
+    else:
+        wait_time = str(int(minutes_left)) + ' minutes'
+    timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
+    return f'{REJECT_EMOJI} You can request coins no more than once every' \
+           f' {timeout_in_hours} hours for the same chain, ' \
+           f'please try again in ' \
+           f'{wait_time}'
 
 
 def check_time_limits(requester: str, address: str, chain: dict):
@@ -183,18 +204,7 @@ def check_time_limits(requester: str, address: str, chain: dict):
         check_time = ACTIVE_REQUESTS[chain['name']
                                      ][requester]['next_request']
         if check_time > message_timestamp:
-            seconds_left = check_time - message_timestamp
-            minutes_left = seconds_left / 60
-            if minutes_left > 120:
-                wait_time = str(int(minutes_left/60)) + ' hours'
-            else:
-                wait_time = str(int(minutes_left)) + ' minutes'
-            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
-            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
-            reply = f'{REJECT_EMOJI} You can request coins no more than once every' \
-                f' {timeout_in_hours} hours for the same chain, ' \
-                f'please try again in ' \
-                f'{wait_time}'
+            reply = format_timeout_message(check_time, message_timestamp)
             return False, reply
         del ACTIVE_REQUESTS[chain['name']][requester]
 
@@ -202,17 +212,7 @@ def check_time_limits(requester: str, address: str, chain: dict):
     if address in ACTIVE_REQUESTS[chain['name']]:
         check_time = ACTIVE_REQUESTS[chain['name']][address]['next_request']
         if check_time > message_timestamp:
-            seconds_left = check_time - message_timestamp
-            minutes_left = seconds_left / 60
-            if minutes_left > 120:
-                wait_time = str(int(minutes_left/60)) + ' hours'
-            else:
-                wait_time = str(int(minutes_left)) + ' minutes'
-            timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
-            reply = f'{REJECT_EMOJI} You can request coins no more than once every' \
-                f' {timeout_in_hours} hours, for the same chain, ' \
-                f'please try again in ' \
-                f'{wait_time}'
+            reply = format_timeout_message(check_time, message_timestamp)
             return False, reply
         del ACTIVE_REQUESTS[chain['name']][address]
 
@@ -258,7 +258,8 @@ async def token_request(requester, address, chain: dict):
         result = gaia.check_address(address)
         if result['human'] != ADDRESS_PREFIX:
             return f'❗ Expected `{ADDRESS_PREFIX}` prefix'
-    except Exception:
+    except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
+        logging.error('Address verification failed for %s: %s', address, ex)
         return '❗ The address could not be verified'
 
     # Check whether the faucet has reached the daily cap
@@ -291,11 +292,11 @@ async def token_request(requester, address, chain: dict):
                     reply = f'✅  <{chain["block_explorer_tx"]}{transfer}>'
                 else:
                     reply = f'✅ Hash ID: {transfer}'
-            except Exception as ex:
+            except (KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError, subprocess.CalledProcessError) as ex:
                 del ACTIVE_REQUESTS[chain['name']][requester.id]
                 del ACTIVE_REQUESTS[chain['name']][address]
                 chain['day_tally'] -= int(chain['amount_to_send'])
-                logging.info(ex)
+                logging.error('Token transfer failed for %s to %s: %s', requester, address, ex)
                 reply = '❗ request could not be processed'
         else:
             chain['day_tally'] -= int(chain['amount_to_send'])
@@ -332,8 +333,8 @@ async def on_message(message):
         help_reply += '**Supported chain IDs**\n'
         for chain, data in chains.items():
             help_reply += f'* `{chain}`\n'
-            help_reply += f' * {data["description"]}\n'
-            help_reply += f' * <{data["website"]}>\n'
+            help_reply += f'  * {data["description"]}\n'
+            help_reply += f'  * {data["website"]}\n'
         await message.reply(help_reply)
         return
 
