@@ -23,43 +23,78 @@ disc_log.setLevel(logging.CRITICAL)
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
 
-# Load config
-config = toml.load('config.toml')
-
-try:
-    GAIA_HOME = config['gaia_home_folder']
-    TX_LOG_PATH = config['transactions_log']
-    ADDRESS_PREFIX = config['cosmos']['prefix']
-    REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
-    DISCORD_TOKEN = str(config['discord']['bot_token'])
-    LISTENING_CHANNELS = list(
-        config['discord']['channels_to_listen'].split(','))
-    DENOM = str(config['cosmos']['denomination'])
-    chains = config['chains']
-    for chain in chains:
-        chains[chain]['name'] = chain
-        chains[chain]["active_day"] = datetime.datetime.today().date()
-        chains[chain]["day_tally"] = 0
-    ACTIVE_REQUESTS = {chain: {} for chain in chains}
-except KeyError as key:
-    logging.critical('Key could not be found: %s', key)
-    sys.exit()
+# Global variables (will be initialized by load_config)
+config = None
+GAIA_HOME = None
+TX_LOG_PATH = None
+ADDRESS_PREFIX = None
+REQUEST_TIMEOUT = None
+DISCORD_TOKEN = None
+LISTENING_CHANNELS = None
+DENOM = None
+chains = None
+ACTIVE_REQUESTS = None
 
 APPROVE_EMOJI = '✅'
 REJECT_EMOJI = '🚫'
 
-HELP_MSG = '**List of available commands**\n' \
-    '1. Request tokens:\n' \
-    '`$request [chain ID] [cosmos address]`\n\n' \
-    '2. Query an address balance:\n' \
-    '`$balance [chain ID] [cosmos address]`\n\n' \
-    '3. Query a transaction:\n'\
-    '`$tx_info [chain ID] [transaction hash ID]`\n\n' \
-    '4. Query the faucet and node status:\n' \
-    '`$faucet_status [chain ID]`\n\n' \
-    '5. Query the faucet address: \n' \
-    '`$faucet_address [chain ID]`\n\n' \
-    f'Example request: `$request {chains[list(chains.keys())[0]]["name"]} cosmos1j7qzunvzx4cdqya80wvnrsmzyt9069d3gwhu5p`\n\n'
+
+def load_config(config_path: str = 'config.toml'):
+    """
+    Load configuration from TOML file and initialize global variables
+    """
+    global config, GAIA_HOME, TX_LOG_PATH, ADDRESS_PREFIX, REQUEST_TIMEOUT
+    global DISCORD_TOKEN, LISTENING_CHANNELS, DENOM, chains, ACTIVE_REQUESTS
+    
+    try:
+        config = toml.load(config_path)
+    except FileNotFoundError:
+        logging.critical('Config file not found: %s', config_path)
+        sys.exit(1)
+    except toml.TomlDecodeError as ex:
+        logging.critical('Failed to parse config file: %s', ex)
+        sys.exit(1)
+
+    try:
+        GAIA_HOME = config['gaia_home_folder']
+        TX_LOG_PATH = config['transactions_log']
+        ADDRESS_PREFIX = config['cosmos']['prefix']
+        REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
+        DISCORD_TOKEN = str(config['discord']['bot_token'])
+        LISTENING_CHANNELS = list(
+            config['discord']['channels_to_listen'].split(','))
+        DENOM = str(config['cosmos']['denomination'])
+        chains = config['chains']
+        for chain in chains:
+            chains[chain]['name'] = chain
+            chains[chain]["active_day"] = datetime.datetime.today().date()
+            chains[chain]["day_tally"] = 0
+        ACTIVE_REQUESTS = {chain: {} for chain in chains}
+    except KeyError as key:
+        logging.critical('Key could not be found in config: %s', key)
+        sys.exit(1)
+
+
+HELP_MSG = None  # Will be set after config is loaded
+
+
+def initialize_help_message():
+    """
+    Initialize the help message after config is loaded
+    """
+    global HELP_MSG
+    HELP_MSG = '**List of available commands**\n' \
+        '1. Request tokens:\n' \
+        '`$request [chain ID] [cosmos address]`\n\n' \
+        '2. Query an address balance:\n' \
+        '`$balance [chain ID] [cosmos address]`\n\n' \
+        '3. Query a transaction:\n' \
+        '`$tx_info [chain ID] [transaction hash ID]`\n\n' \
+        '4. Query the faucet and node status:\n' \
+        '`$faucet_status [chain ID]`\n\n' \
+        '5. Query the faucet address: \n' \
+        '`$faucet_address [chain ID]`\n\n' \
+        f'Example request: `$request {chains[list(chains.keys())[0]]["name"]} cosmos1j7qzunvzx4cdqya80wvnrsmzyt9069d3gwhu5p`\n\n'
     
 
 COMMAND_LIST = [
@@ -361,6 +396,17 @@ async def on_message(message):
                 address = message_sections[2]
                 await message.reply(await token_request(requester, address, chain))
     else:
-        logging.info(f'command not recognized: {command}')
+        logging.info('command not recognized: %s', command)
 
-client.run(DISCORD_TOKEN)
+
+def main():
+    """
+    Main entry point for the Discord bot
+    """
+    load_config()
+    initialize_help_message()
+    client.run(DISCORD_TOKEN)
+
+
+if __name__ == '__main__':
+    main()
