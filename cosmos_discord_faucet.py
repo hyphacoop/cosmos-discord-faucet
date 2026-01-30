@@ -4,6 +4,7 @@ Sets up a Discord bot to provide info and tokens
 """
 
 # import configparser
+import asyncio
 import time
 import datetime
 import logging
@@ -34,6 +35,7 @@ LISTENING_CHANNELS = None
 DENOM = None
 chains = None
 ACTIVE_REQUESTS = None
+chain_locks = {}  # Locks for each chain to prevent race conditions
 
 APPROVE_EMOJI = '✅'
 REJECT_EMOJI = '🚫'
@@ -69,6 +71,7 @@ def load_config(config_path: str = 'config.toml'):
             chains[chain]['name'] = chain
             chains[chain]["active_day"] = datetime.datetime.today().date()
             chains[chain]["day_tally"] = 0
+            chain_locks[chain] = asyncio.Lock()  # Create lock for each chain
         ACTIVE_REQUESTS = {chain: {} for chain in chains}
     except KeyError as key:
         logging.critical('Key could not be found in config: %s', key)
@@ -261,26 +264,37 @@ def check_time_limits(requester: str, address: str, chain: dict):
     return True, None
 
 
-def check_daily_cap(chain: dict):
+def check_daily_cap(chain: dict, delta: int):
     """
     Returns True if the faucet has not reached the daily cap
     Returns False otherwise
+    Does not modify state - only checks
     """
-    delta = int(chain["amount_to_send"])
     # Check date
     today = datetime.datetime.today().date()
     if today != chain['active_day']:
-        # The date has changed, reset the tally
-        chain['active_day'] = today
-        chain['day_tally'] = delta
+        # The date has changed, would reset the tally
         return True
 
     # Check tally
     if chain['day_tally'] + delta > int(chain['daily_cap']):
         return False
 
-    chain['day_tally'] += delta
     return True
+
+
+def increment_daily_tally(chain: dict, delta: int):
+    """
+    Increment or reset the daily tally
+    Should only be called within a lock
+    """
+    today = datetime.datetime.today().date()
+    if today != chain['active_day']:
+        # The date has changed, reset the tally
+        chain['active_day'] = today
+        chain['day_tally'] = delta
+    else:
+        chain['day_tally'] += delta
 
 
 async def token_request(requester, address, chain: dict):
@@ -297,51 +311,61 @@ async def token_request(requester, address, chain: dict):
         logging.error('Address verification failed for %s: %s', address, ex)
         return '❗ The address could not be verified'
 
-    # Check whether the faucet has reached the daily cap
-    if check_daily_cap(chain=chain):
+    delta = int(chain["amount_to_send"])
+    
+    # Use lock to prevent race conditions on shared state
+    async with chain_locks[chain['name']]:
+        # Check whether the faucet has reached the daily cap
+        if not check_daily_cap(chain=chain, delta=delta):
+            logging.info('%s requested tokens for %s in %s '
+                         'but the daily cap has been reached',
+                         requester, address, chain['name'])
+            return 'Sorry, the daily cap for this faucet has been reached'
+        
         # Check whether user or address have received tokens on this chain
         approved, reply = check_time_limits(
             requester=requester.id, address=address, chain=chain)
-        if approved:
-            request = {'sender': chain['faucet_address'],
-                       'recipient': address,
-                       'amount': chain['amount_to_send'] + DENOM,
-                       'fees': chain['tx_fees'] + DENOM,
-                       'chain_id': chain['chain_id'],
-                       'node': chain['node_url']}
-            try:
-                # Make gaia call and send the response back
-                transfer = gaia.tx_send(request)
-                logging.info('%s requested tokens for %s in %s',
-                             requester, address, chain['name'])
-                now = datetime.datetime.now()
-
-                # Get faucet balance and save to transaction log
-                balance = await get_faucet_balance(chain)
-                await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
-                                                  f'{chain["name"]},{address},'
-                                                  f'{chain["amount_to_send"] + DENOM},'
-                                                  f'{transfer},'
-                                                  f'{balance}')
-                if chain["block_explorer_tx"]:
-                    reply = f'✅  <{chain["block_explorer_tx"]}{transfer}>'
-                else:
-                    reply = f'✅ Hash ID: {transfer}'
-            except (KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError, subprocess.CalledProcessError) as ex:
-                del ACTIVE_REQUESTS[chain['name']][requester.id]
-                del ACTIVE_REQUESTS[chain['name']][address]
-                chain['day_tally'] -= int(chain['amount_to_send'])
-                logging.error('Token transfer failed for %s to %s: %s', requester, address, ex)
-                reply = '❗ request could not be processed'
-        else:
-            chain['day_tally'] -= int(chain['amount_to_send'])
+        
+        if not approved:
             logging.info('%s requested tokens for %s in %s and was rejected',
                          requester, address, chain['name'])
-    else:
-        logging.info('%s requested tokens for %s in %s '
-                     'but the daily cap has been reached',
-                     requester, address, chain['name'])
-        reply = 'Sorry, the daily cap for this faucet has been reached'
+            return reply
+        
+        # Increment the daily tally now that we're committed to the request
+        increment_daily_tally(chain, delta)
+        
+        request = {'sender': chain['faucet_address'],
+                   'recipient': address,
+                   'amount': chain['amount_to_send'] + DENOM,
+                   'fees': chain['tx_fees'] + DENOM,
+                   'chain_id': chain['chain_id'],
+                   'node': chain['node_url']}
+        try:
+            # Make gaia call and send the response back
+            transfer = gaia.tx_send(request)
+            logging.info('%s requested tokens for %s in %s',
+                         requester, address, chain['name'])
+            now = datetime.datetime.now()
+
+            # Get faucet balance and save to transaction log
+            balance = await get_faucet_balance(chain)
+            await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
+                                              f'{chain["name"]},{address},'
+                                              f'{chain["amount_to_send"] + DENOM},'
+                                              f'{transfer},'
+                                              f'{balance}')
+            if chain["block_explorer_tx"]:
+                reply = f'✅  <{chain["block_explorer_tx"]}{transfer}>'
+            else:
+                reply = f'✅ Hash ID: {transfer}'
+        except (KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError, subprocess.CalledProcessError) as ex:
+            # Rollback state changes on failure
+            del ACTIVE_REQUESTS[chain['name']][requester.id]
+            del ACTIVE_REQUESTS[chain['name']][address]
+            chain['day_tally'] -= delta
+            logging.error('Token transfer failed for %s to %s: %s', requester, address, ex)
+            reply = '❗ request could not be processed'
+    
     return reply
 
 
