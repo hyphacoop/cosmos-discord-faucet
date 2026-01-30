@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.0
+
+- Multi chain support
+- Rename metrics to align with Prometheus best practices
+
 ## v0.6.2
 
 - Incorrect chain names are ignored.
