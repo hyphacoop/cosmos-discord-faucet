@@ -124,7 +124,7 @@ async def save_transaction_statistics(transaction: str):
 
 async def get_faucet_balance(chain: dict):
     """
-    Returns the uatom balance
+    Returns the uatom balance or None if not found
     """
     balances = gaia.get_balance(
         address=chain['faucet_address'],
@@ -133,6 +133,7 @@ async def get_faucet_balance(chain: dict):
     for balance in balances:
         if balance['denom'] == 'uatom':
             return balance['amount']+'uatom'
+    return None
 
 
 async def balance_request(address, chain: dict):
