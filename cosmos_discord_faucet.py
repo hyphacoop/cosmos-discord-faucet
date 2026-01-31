@@ -39,6 +39,10 @@ chain_locks = {}  # Locks for each chain to prevent race conditions
 APPROVE_EMOJI = '✅'
 REJECT_EMOJI = '🚫'
 
+# Constants
+TX_HASH_LENGTH = 64  # Expected length of transaction hash ID
+TWO_HOURS_IN_MINUTES = 120  # Threshold for displaying hours vs minutes
+
 
 def load_config(config_path: str = 'config.toml'):
     """
@@ -193,7 +197,7 @@ async def transaction_info(hash_id, chain: dict):
     """
     reply = ''
     # Extract hash ID
-    if len(hash_id) == 64:
+    if len(hash_id) == TX_HASH_LENGTH:
         try:
             res = gaia.get_tx_info(
                 hash_id=hash_id,
@@ -211,7 +215,7 @@ async def transaction_info(hash_id, chain: dict):
             logging.error('Transaction info request failed: %s', ex)
             reply = '❗ gaia could not handle your request'
     else:
-        reply = f'❗ Hash ID must be 64 characters long, received `{len(hash_id)}`'
+        reply = f'❗ Hash ID must be {TX_HASH_LENGTH} characters long, received `{len(hash_id)}`'
     return reply
 
 
@@ -221,7 +225,7 @@ def format_timeout_message(check_time: float, message_timestamp: float) -> str:
     """
     seconds_left = check_time - message_timestamp
     minutes_left = seconds_left / 60
-    if minutes_left > 120:
+    if minutes_left > TWO_HOURS_IN_MINUTES:
         wait_time = f'{int(minutes_left/60)} hours'
     else:
         wait_time = f'{int(minutes_left)} minutes'
