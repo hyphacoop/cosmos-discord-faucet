@@ -387,8 +387,16 @@ async def on_message(message):
     """
     Responds to messages on specified channels.
     """
-    # Only listen in specific channels, and do not listen to your own messages
-    if (message.channel.name not in LISTENING_CHANNELS) or (message.author == client.user):
+    # Ignore messages from the bot itself
+    if message.author == client.user:
+        return
+    
+    # Only listen in specific channels (ignore DMs and channels without names)
+    if not hasattr(message.channel, 'name') or message.channel.name not in LISTENING_CHANNELS:
+        return
+
+    # Validate message content
+    if not message.content or not isinstance(message.content, str):
         return
 
     message_sections = message.content.split(' ')    
