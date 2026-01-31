@@ -15,6 +15,8 @@ import toml
 import discord
 import gaia_calls as gaia
 
+from typing import Optional, Tuple
+
 # Turn Down Discord Logging
 disc_log = logging.getLogger('discord')
 disc_log.setLevel(logging.CRITICAL)
@@ -44,7 +46,7 @@ TX_HASH_LENGTH = 64  # Expected length of transaction hash ID
 TWO_HOURS_IN_MINUTES = 120  # Threshold for displaying hours vs minutes
 
 
-def load_config(config_path: str = 'config.toml'):
+def load_config(config_path: str = 'config.toml') -> None:
     """
     Load configuration from TOML file and initialize global variables
     """
@@ -84,7 +86,7 @@ def load_config(config_path: str = 'config.toml'):
 HELP_MSG = None  # Will be set after config is loaded
 
 
-def initialize_help_message():
+def initialize_help_message() -> None:
     """
     Initialize the help message after config is loaded
     """
@@ -116,7 +118,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 
-async def save_transaction_statistics(transaction: str):
+async def save_transaction_statistics(transaction: str) -> None:
     """
     Transaction strings are already comma-separated
     """
@@ -125,7 +127,7 @@ async def save_transaction_statistics(transaction: str):
         await csv_file.flush()
 
 
-async def get_faucet_balance(chain: dict):
+async def get_faucet_balance(chain: dict) -> Optional[str]:
     """
     Returns the balance for the chain's denomination, or None if not found
     """
@@ -142,7 +144,7 @@ async def get_faucet_balance(chain: dict):
     return None
 
 
-async def balance_request(address, chain: dict):
+async def balance_request(address: str, chain: dict) -> str:
     """
     Provide the balance for a given address and chain
     """
@@ -169,7 +171,7 @@ async def balance_request(address, chain: dict):
     return reply
 
 
-async def faucet_status(chain: dict):
+async def faucet_status(chain: dict) -> str:
     """
     Provide node and faucet info
     """
@@ -191,7 +193,7 @@ async def faucet_status(chain: dict):
     return reply
 
 
-async def transaction_info(hash_id, chain: dict):
+async def transaction_info(hash_id: str, chain: dict) -> str:
     """
     Provide info on a specific transaction
     """
@@ -236,7 +238,7 @@ def format_timeout_message(check_time: float, message_timestamp: float) -> str:
            f'{wait_time}'
 
 
-def _check_single_time_limit(entity_id: str, chain: dict, message_timestamp: float):
+def _check_single_time_limit(entity_id: str, chain: dict, message_timestamp: float) -> Tuple[bool, Optional[str]]:
     """
     Helper function to check if a single entity (user or address) is time-blocked.
     Returns (is_blocked, reply_message)
@@ -256,7 +258,7 @@ def _check_single_time_limit(entity_id: str, chain: dict, message_timestamp: flo
     return False, None
 
 
-def _register_request_limits(requester: str, address: str, chain: dict, message_timestamp: float):
+def _register_request_limits(requester: str, address: str, chain: dict, message_timestamp: float) -> None:
     """
     Register time limits for both requester and address
     """
@@ -265,7 +267,7 @@ def _register_request_limits(requester: str, address: str, chain: dict, message_
     chain_requests[address] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
 
 
-def check_time_limits(requester: str, address: str, chain: dict):
+def check_time_limits(requester: str, address: str, chain: dict) -> Tuple[bool, Optional[str]]:
     """
     Returns True, None if the given requester and address are not time-blocked for the given chain
     Returns False, reply if either of them is still on time-out; msg is the reply to the requester
@@ -287,7 +289,7 @@ def check_time_limits(requester: str, address: str, chain: dict):
     return True, None
 
 
-def check_daily_cap(chain: dict, delta: int):
+def check_daily_cap(chain: dict, delta: int) -> bool:
     """
     Returns True if the faucet has not reached the daily cap
     Returns False otherwise
@@ -306,7 +308,7 @@ def check_daily_cap(chain: dict, delta: int):
     return True
 
 
-def increment_daily_tally(chain: dict, delta: int):
+def increment_daily_tally(chain: dict, delta: int) -> None:
     """
     Increment or reset the daily tally
     Should only be called within a lock
@@ -334,7 +336,7 @@ def _build_transaction_request(chain: dict, address: str) -> dict:
     }
 
 
-async def _execute_token_transfer(requester, address, chain: dict, delta: int):
+async def _execute_token_transfer(requester, address: str, chain: dict, delta: int) -> str:
     """
     Execute the token transfer and return the reply message.
     Raises exceptions on failure for rollback handling.
@@ -361,7 +363,7 @@ async def _execute_token_transfer(requester, address, chain: dict, delta: int):
     else:
         return f'✅ Hash ID: {transfer}'
 
-async def token_request(requester, address, chain: dict):
+async def token_request(requester, address: str, chain: dict) -> str:
     """
     Send tokens to the specified address
     """
@@ -412,7 +414,7 @@ async def token_request(requester, address, chain: dict):
 
 
 @client.event
-async def on_ready():
+async def on_ready() -> None:
     """
     Gets called when the Discord client logs in
     """
@@ -420,7 +422,7 @@ async def on_ready():
 
 
 @client.event
-async def on_message(message):
+async def on_message(message) -> None:
     """
     Responds to messages on specified channels.
     """
@@ -473,7 +475,7 @@ async def on_message(message):
         logging.info('command not recognized: %s', command)
 
 
-def main():
+def main() -> None:
     """
     Main entry point for the Discord bot
     """
