@@ -236,36 +236,54 @@ def format_timeout_message(check_time: float, message_timestamp: float) -> str:
            f'{wait_time}'
 
 
+def _check_single_time_limit(entity_id: str, chain: dict, message_timestamp: float):
+    """
+    Helper function to check if a single entity (user or address) is time-blocked.
+    Returns (is_blocked, reply_message)
+    """
+    chain_requests = ACTIVE_REQUESTS[chain['name']]
+    
+    if entity_id not in chain_requests:
+        return False, None
+    
+    check_time = chain_requests[entity_id]['next_request']
+    if check_time > message_timestamp:
+        reply = format_timeout_message(check_time, message_timestamp)
+        return True, reply
+    
+    # Time limit expired, remove the entry
+    del chain_requests[entity_id]
+    return False, None
+
+
+def _register_request_limits(requester: str, address: str, chain: dict, message_timestamp: float):
+    """
+    Register time limits for both requester and address
+    """
+    chain_requests = ACTIVE_REQUESTS[chain['name']]
+    chain_requests[requester] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
+    chain_requests[address] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
+
+
 def check_time_limits(requester: str, address: str, chain: dict):
     """
     Returns True, None if the given requester and address are not time-blocked for the given chain
     Returns False, reply if either of them is still on time-out; msg is the reply to the requester
     """
     message_timestamp = time.time()
+    
     # Check user allowance
-    if requester in ACTIVE_REQUESTS[chain['name']]:
-        check_time = ACTIVE_REQUESTS[chain['name']
-                                     ][requester]['next_request']
-        if check_time > message_timestamp:
-            reply = format_timeout_message(check_time, message_timestamp)
-            return False, reply
-        del ACTIVE_REQUESTS[chain['name']][requester]
+    is_blocked, reply = _check_single_time_limit(requester, chain, message_timestamp)
+    if is_blocked:
+        return False, reply
 
     # Check address allowance
-    if address in ACTIVE_REQUESTS[chain['name']]:
-        check_time = ACTIVE_REQUESTS[chain['name']][address]['next_request']
-        if check_time > message_timestamp:
-            reply = format_timeout_message(check_time, message_timestamp)
-            return False, reply
-        del ACTIVE_REQUESTS[chain['name']][address]
+    is_blocked, reply = _check_single_time_limit(address, chain, message_timestamp)
+    if is_blocked:
+        return False, reply
 
-    if requester not in ACTIVE_REQUESTS[chain['name']] and \
-       address not in ACTIVE_REQUESTS[chain['name']]:
-        ACTIVE_REQUESTS[chain['name']][requester] = {
-            'next_request': message_timestamp + REQUEST_TIMEOUT}
-        ACTIVE_REQUESTS[chain['name']][address] = {
-            'next_request': message_timestamp + REQUEST_TIMEOUT}
-
+    # Register time limits for this request
+    _register_request_limits(requester, address, chain, message_timestamp)
     return True, None
 
 
@@ -301,6 +319,47 @@ def increment_daily_tally(chain: dict, delta: int):
     else:
         chain['day_tally'] += delta
 
+
+def _build_transaction_request(chain: dict, address: str) -> dict:
+    """
+    Build the transaction request dictionary
+    """
+    return {
+        'sender': chain['faucet_address'],
+        'recipient': address,
+        'amount': chain['amount_to_send'] + DENOM,
+        'fees': chain['tx_fees'] + DENOM,
+        'chain_id': chain['chain_id'],
+        'node': chain['node_url']
+    }
+
+
+async def _execute_token_transfer(requester, address, chain: dict, delta: int):
+    """
+    Execute the token transfer and return the reply message.
+    Raises exceptions on failure for rollback handling.
+    """
+    request = _build_transaction_request(chain, address)
+    
+    # Make gaia call and send the response back
+    transfer = gaia.tx_send(request)
+    logging.info('%s requested tokens for %s in %s',
+                 requester, address, chain['name'])
+    now = datetime.datetime.now()
+
+    # Get faucet balance and save to transaction log
+    balance = await get_faucet_balance(chain)
+    await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
+                                      f'{chain["name"]},{address},'
+                                      f'{chain["amount_to_send"] + DENOM},'
+                                      f'{transfer},'
+                                      f'{balance}')
+    
+    # Format reply with block explorer link or hash
+    if chain["block_explorer_tx"]:
+        return f'✅  <{chain["block_explorer_tx"]}{transfer}>'
+    else:
+        return f'✅ Hash ID: {transfer}'
 
 async def token_request(requester, address, chain: dict):
     """
@@ -339,30 +398,8 @@ async def token_request(requester, address, chain: dict):
         # Increment the daily tally now that we're committed to the request
         increment_daily_tally(chain, delta)
         
-        request = {'sender': chain['faucet_address'],
-                   'recipient': address,
-                   'amount': chain['amount_to_send'] + DENOM,
-                   'fees': chain['tx_fees'] + DENOM,
-                   'chain_id': chain['chain_id'],
-                   'node': chain['node_url']}
         try:
-            # Make gaia call and send the response back
-            transfer = gaia.tx_send(request)
-            logging.info('%s requested tokens for %s in %s',
-                         requester, address, chain['name'])
-            now = datetime.datetime.now()
-
-            # Get faucet balance and save to transaction log
-            balance = await get_faucet_balance(chain)
-            await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
-                                              f'{chain["name"]},{address},'
-                                              f'{chain["amount_to_send"] + DENOM},'
-                                              f'{transfer},'
-                                              f'{balance}')
-            if chain["block_explorer_tx"]:
-                reply = f'✅  <{chain["block_explorer_tx"]}{transfer}>'
-            else:
-                reply = f'✅ Hash ID: {transfer}'
+            reply = await _execute_token_transfer(requester, address, chain, delta)
         except (KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError, subprocess.CalledProcessError) as ex:
             # Rollback state changes on failure
             del ACTIVE_REQUESTS[chain['name']][requester.id]
