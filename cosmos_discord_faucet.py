@@ -148,8 +148,6 @@ async def balance_request(address: str, chain: dict) -> str:
     """
     Provide the balance for a given address and chain
     """
-    reply = ''
-
     try:
         # check address is valid
         result = gaia.check_address(address)
@@ -159,45 +157,41 @@ async def balance_request(address: str, chain: dict) -> str:
                     address=address,
                     node=chain["node_url"],
                     chain_id=chain["chain_id"])
-                reply = f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```\n{tabulate(balance)}\n```\n'
+                return f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```\n{tabulate(balance)}\n```\n'
             except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
                 logging.error('Balance request failed: %s', ex)
-                reply = '❗ gaia could not handle your request'
+                return '❗ gaia could not handle your request'
         else:
-            reply = f'❗ Expected `{ADDRESS_PREFIX}` prefix'
+            return f'❗ Expected `{ADDRESS_PREFIX}` prefix'
     except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
         logging.error('Address verification failed: %s', ex)
-        reply = '❗ gaia could not verify the address'
-    return reply
+        return '❗ gaia could not verify the address'
 
 
 async def faucet_status(chain: dict) -> str:
     """
     Provide node and faucet info
     """
-    reply = ''
     logging.info('Faucet status requested for %s', chain['name'])
     try:
         node_status = gaia.get_node_status(node=chain['node_url'])
         if node_status.keys():
-            status = f'```\n' \
+            return f'```\n' \
                 f'Node moniker:       {node_status["moniker"]}\n' \
                 f'Node last block:    {node_status["last_block"]}\n' \
                 f'Faucet address:     {chain["faucet_address"]}\n' \
                 f'Amount per request: {chain["amount_to_send"]}{DENOM}\n' \
                 f'```'
-            reply = status
+        return ''
     except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
         logging.error('Faucet status request failed: %s', ex)
-        reply = '❗ gaia could not handle your request'
-    return reply
+        return '❗ gaia could not handle your request'
 
 
 async def transaction_info(hash_id: str, chain: dict) -> str:
     """
     Provide info on a specific transaction
     """
-    reply = ''
     # Extract hash ID
     if len(hash_id) == TX_HASH_LENGTH:
         try:
@@ -207,7 +201,7 @@ async def transaction_info(hash_id: str, chain: dict) -> str:
                 chain_id=chain['chain_id'])
             if res is None:
                 return '❗ Transaction is not of type MsgSend or could not be found'
-            reply = f'```' \
+            return f'```' \
                 f'From:    {res["sender"]}\n' \
                 f'To:      {res["receiver"]}\n' \
                 f'Amount:  {res["amount"]}\n' \
@@ -215,10 +209,9 @@ async def transaction_info(hash_id: str, chain: dict) -> str:
 
         except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
             logging.error('Transaction info request failed: %s', ex)
-            reply = '❗ gaia could not handle your request'
+            return '❗ gaia could not handle your request'
     else:
-        reply = f'❗ Hash ID must be {TX_HASH_LENGTH} characters long, received `{len(hash_id)}`'
-    return reply
+        return f'❗ Hash ID must be {TX_HASH_LENGTH} characters long, received `{len(hash_id)}`'
 
 
 def format_timeout_message(check_time: float, message_timestamp: float) -> str:
