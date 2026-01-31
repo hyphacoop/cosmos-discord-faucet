@@ -295,7 +295,7 @@ def check_daily_cap(chain: dict, delta: int):
     """
     # Check date
     today = datetime.datetime.today().date()
-    if today != chain['active_day']:
+    if today > chain['active_day']:
         # The date has changed, would reset the tally
         return True
 
@@ -312,7 +312,7 @@ def increment_daily_tally(chain: dict, delta: int):
     Should only be called within a lock
     """
     today = datetime.datetime.today().date()
-    if today != chain['active_day']:
+    if today > chain['active_day']:
         # The date has changed, reset the tally
         chain['active_day'] = today
         chain['day_tally'] = delta
