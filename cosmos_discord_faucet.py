@@ -3,7 +3,6 @@ Sets up a Discord bot to provide info and tokens
 
 """
 
-# import configparser
 import asyncio
 import time
 import datetime
