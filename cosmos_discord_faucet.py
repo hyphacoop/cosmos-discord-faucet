@@ -124,15 +124,18 @@ async def save_transaction_statistics(transaction: str):
 
 async def get_faucet_balance(chain: dict):
     """
-    Returns the uatom balance or None if not found
+    Returns the balance for the chain's denomination, or None if not found
     """
+    # Use chain-specific denom if available, otherwise use global DENOM
+    target_denom = chain.get('denom', DENOM if DENOM else 'uatom')
+    
     balances = gaia.get_balance(
         address=chain['faucet_address'],
         node=chain['node_url'],
         chain_id=chain['chain_id'])
     for balance in balances:
-        if balance['denom'] == 'uatom':
-            return balance['amount']+'uatom'
+        if balance['denom'] == target_denom:
+            return balance['amount'] + target_denom
     return None
 
 
