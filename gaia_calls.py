@@ -64,15 +64,14 @@ def get_node_status(node: str):
     status = subprocess.run(
         ['gaiad', 'status', f'--node={node}'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
     try:
         status.check_returncode()
-        status = json.loads(status.stderr)
+        status = json.loads(status.stdout)
         node_status = {}
-        node_status['moniker'] = status['NodeInfo']['moniker']
-        node_status['chain'] = status['NodeInfo']['network']
-        node_status['last_block'] = status['SyncInfo']['latest_block_height']
-        node_status['syncs'] = status['SyncInfo']['catching_up']
+        node_status['moniker'] = status['node_info']['moniker']
+        node_status['chain'] = status['node_info']['network']
+        node_status['last_block'] = status['sync_info']['latest_block_height']
+        node_status['syncs'] = status['sync_info']['catching_up']
         return node_status
     except subprocess.CalledProcessError as cpe:
         output = str(status.stderr).split('\n', maxsplit=1)
@@ -96,6 +95,10 @@ def get_tx_info(hash_id: str, node: str, chain_id: str):
     try:
         tx_gaia.check_returncode()
         tx_response = json.loads(tx_gaia.stdout)
+        if tx_response['tx']['body']['messages'][0]['@type'] != '/cosmos.bank.v1beta1.MsgSend':
+            logging.error(
+                "Transaction type is not MsgSend: %s", tx_response['tx']['body']['messages'][0]['@type'])
+            return None
         tx_body = tx_response['tx']['body']['messages'][0]
         tx_out = {}
         tx_out['height'] = tx_response['height']
