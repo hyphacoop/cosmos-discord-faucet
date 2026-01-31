@@ -154,9 +154,7 @@ async def balance_request(address, chain: dict):
                     address=address,
                     node=chain["node_url"],
                     chain_id=chain["chain_id"])
-                reply = f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```'
-                reply = reply + tabulate(balance)
-                reply = reply + '\n```\n'
+                reply = f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```\n{tabulate(balance)}\n```\n'
             except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
                 logging.error('Balance request failed: %s', ex)
                 reply = '❗ gaia could not handle your request'
@@ -225,9 +223,9 @@ def format_timeout_message(check_time: float, message_timestamp: float) -> str:
     seconds_left = check_time - message_timestamp
     minutes_left = seconds_left / 60
     if minutes_left > 120:
-        wait_time = str(int(minutes_left/60)) + ' hours'
+        wait_time = f'{int(minutes_left/60)} hours'
     else:
-        wait_time = str(int(minutes_left)) + ' minutes'
+        wait_time = f'{int(minutes_left)} minutes'
     timeout_in_hours = int(REQUEST_TIMEOUT / 60 / 60)
     return f'{REJECT_EMOJI} You can request coins no more than once every' \
            f' {timeout_in_hours} hours for the same chain, ' \
