@@ -1,23 +1,37 @@
 # Cosmos Discord Faucet configuration
 
 verbose        = "yes"
-gaia_home_folder = "~/.gaia"
 transactions_log = "transactions.csv"
 
-[cosmos]
-prefix         = "cosmos"
-denomination   = "uatom"
-
 [chains]
-    [chains.test]
-    node_url = "https://rpc.cosmos-chain.com:443"
-    chain_id = "test-1"
-    faucet_address = ""
-    block_explorer_tx = ""
+    [chains.chain-1]
+    binary = "gaiad"
+    home_folder = "~/.gaia"
+    prefix = "cosmos"
+    denom = "uatom"
+    node_url = "http://localhost:26657"
+    chain_id = "test-gaiad-1"
+    faucet_address = "cosmos..."
+    block_explorer_tx = "https://chain1.explorer.com/tx/"
     daily_cap = "250000000"
     amount_to_send = "1000"
-    tx_fees = "100"
-    description = "A test chain"
+    tx_fees = "1000"
+    description = "My Gaia testnet"
+    website = ""
+
+    [chains.chain-2]
+    binary = "simd"
+    home_folder = "~/.simd"
+    prefix = "cosmos"
+    denom = "stake"
+    node_url = "http://localhost:26658"
+    chain_id = "test-simd-1"
+    faucet_address = "cosmos..."
+    block_explorer_tx = "https://chain2.explorer.com/tx/"
+    daily_cap = "250000000"
+    amount_to_send = "1000"
+    tx_fees = "1000"
+    description = "My simd testnet"
     website = ""
 
 [discord]

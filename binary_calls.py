@@ -1,5 +1,5 @@
 """
-gaiad utility functions
+binary utility functions
 - query bank balance
 - query tx
 - node status
@@ -11,11 +11,11 @@ import subprocess
 import logging
 
 
-def check_address(address: str):
+def check_address(address: str, binary: str):
     """
     gaiad keys parse <address>
     """
-    check = subprocess.run(["gaiad", "keys", "parse",
+    check = subprocess.run([binary, "keys", "parse",
                             f"{address}",
                             '--output=json'],
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -33,11 +33,11 @@ def check_address(address: str):
     return None
 
 
-def get_balance(address: str, node: str, chain_id: str):
+def get_balance(address: str, node: str, chain_id: str, binary: str):
     """
     gaiad query bank balances <address> <node> <chain-id>
     """
-    balance = subprocess.run(["gaiad", "query", "bank", "balances",
+    balance = subprocess.run([binary, "query", "bank", "balances",
                               f"{address}",
                               f"--node={node}",
                               f"--chain-id={chain_id}",
@@ -57,12 +57,12 @@ def get_balance(address: str, node: str, chain_id: str):
     return None
 
 
-def get_node_status(node: str):
+def get_node_status(node: str, binary: str):
     """
     gaiad status <node>
     """
     status = subprocess.run(
-        ['gaiad', 'status', f'--node={node}'],
+        [binary, 'status', f'--node={node}'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         status.check_returncode()
@@ -82,26 +82,26 @@ def get_node_status(node: str):
         raise key
 
 
-def get_tx_info(hash_id: str, node: str, chain_id: str):
+def get_tx_info(hash_id: str, node: str, chain_id: str, binary: str):
     """
     gaiad query tx <tx-hash> <node> <chain-id>
     """
-    tx_gaia = subprocess.run(['gaiad', 'query', 'tx',
+    query_response = subprocess.run([binary, 'query', 'tx',
                               f'{hash_id}',
                               f'--node={node}',
                               f'--chain-id={chain_id}',
                               '--output=json'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        tx_gaia.check_returncode()
-        tx_response = json.loads(tx_gaia.stdout)
-        if tx_response['tx']['body']['messages'][0]['@type'] != '/cosmos.bank.v1beta1.MsgSend':
+        query_response.check_returncode()
+        query_response = json.loads(query_response.stdout)
+        if query_response['tx']['body']['messages'][0]['@type'] != '/cosmos.bank.v1beta1.MsgSend':
             logging.error(
-                "Transaction type is not MsgSend: %s", tx_response['tx']['body']['messages'][0]['@type'])
+                "Transaction type is not MsgSend: %s", query_response['tx']['body']['messages'][0]['@type'])
             return None
-        tx_body = tx_response['tx']['body']['messages'][0]
+        tx_body = query_response['tx']['body']['messages'][0]
         tx_out = {}
-        tx_out['height'] = tx_response['height']
+        tx_out['height'] = query_response['height']
         if 'from_address' in tx_body.keys():
             tx_out['sender'] = tx_body['from_address']
             tx_out['receiver'] = tx_body['to_address']
@@ -118,7 +118,7 @@ def get_tx_info(hash_id: str, node: str, chain_id: str):
             return None
         return tx_out
     except subprocess.CalledProcessError as cpe:
-        output = str(tx_gaia.stderr).split('\n', maxsplit=1)
+        output = str(query_response.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except (TypeError, KeyError) as err:
@@ -140,10 +140,11 @@ def tx_send(request: dict):
                        --keyring-backend=test -y
 
     """
-    tx_gaia = subprocess.run(['gaiad', 'tx', 'bank', 'send',
+    tx_response = subprocess.run([request["binary"], 'tx', 'bank', 'send',
                               f'{request["sender"]}',
                               f'{request["recipient"]}',
                               f'{request["amount"]}',
+                              f'--home={request["home"]}',
                               f'--fees={request["fees"]}',
                               f'--node={request["node"]}',
                               f'--chain-id={request["chain_id"]}',
@@ -152,15 +153,22 @@ def tx_send(request: dict):
                               '-y'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        tx_gaia.check_returncode()
-        response = json.loads(tx_gaia.stdout)
+        tx_response.check_returncode()
+        response = json.loads(tx_response.stdout)
+        # Return error if the code is not 0
+        if 'code' in response.keys() and response['code'] != 0:
+            logging.error(
+                'Transaction failed with code %s: %s',
+                response['code'],
+                response['raw_log'])
+            return None
         return response['txhash']
     except subprocess.CalledProcessError as cpe:
-        output = str(tx_gaia.stderr).split('\n', maxsplit=1)
+        output = str(tx_response.stderr).split('\n', maxsplit=1)
         logging.error("%s[%s]", cpe, output)
         raise cpe
     except (TypeError, KeyError) as err:
-        output = tx_gaia.stderr
+        output = tx_response.stderr
         logging.critical(
             'Could not read %s in tx response: %s', err, output)
         raise err
