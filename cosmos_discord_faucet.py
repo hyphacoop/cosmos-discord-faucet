@@ -13,7 +13,7 @@ from tabulate import tabulate
 import aiofiles as aiof
 import toml
 import discord
-import gaia_calls as gaia
+import binary_calls as binary_calls
 
 from typing import Optional, Tuple
 
@@ -27,13 +27,10 @@ logging.basicConfig(level=logging.INFO,
 
 # Global variables (will be initialized by load_config)
 config = None
-GAIA_HOME = None
 TX_LOG_PATH = None
-ADDRESS_PREFIX = None
 REQUEST_TIMEOUT = None
 DISCORD_TOKEN = None
 LISTENING_CHANNELS = None
-DENOM = None
 chains = None
 ACTIVE_REQUESTS = None
 chain_locks = {}  # Locks for each chain to prevent race conditions
@@ -50,8 +47,8 @@ def load_config(config_path: str = 'config.toml') -> None:
     """
     Load configuration from TOML file and initialize global variables
     """
-    global config, GAIA_HOME, TX_LOG_PATH, ADDRESS_PREFIX, REQUEST_TIMEOUT
-    global DISCORD_TOKEN, LISTENING_CHANNELS, DENOM, chains, ACTIVE_REQUESTS
+    global config, TX_LOG_PATH, REQUEST_TIMEOUT
+    global DISCORD_TOKEN, LISTENING_CHANNELS, chains, ACTIVE_REQUESTS
     
     try:
         config = toml.load(config_path)
@@ -63,17 +60,13 @@ def load_config(config_path: str = 'config.toml') -> None:
         sys.exit(1)
 
     try:
-        GAIA_HOME = config['gaia_home_folder']
         TX_LOG_PATH = config['transactions_log']
-        ADDRESS_PREFIX = config['cosmos']['prefix']
         REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
         DISCORD_TOKEN = str(config['discord']['bot_token'])
         LISTENING_CHANNELS = list(
             config['discord']['channels_to_listen'].split(','))
-        DENOM = str(config['cosmos']['denomination'])
         chains = config['chains']
         for chain in chains:
-            chains[chain]['name'] = chain
             chains[chain]["active_day"] = datetime.datetime.today().date()
             chains[chain]["day_tally"] = 0
             chain_locks[chain] = asyncio.Lock()  # Create lock for each chain
@@ -93,16 +86,16 @@ def initialize_help_message() -> None:
     global HELP_MSG
     HELP_MSG = '**List of available commands**\n' \
         '1. Request tokens:\n' \
-        '`$request [chain ID] [cosmos address]`\n\n' \
+        '`$request [chain ID] [address]`\n\n' \
         '2. Query an address balance:\n' \
-        '`$balance [chain ID] [cosmos address]`\n\n' \
+        '`$balance [chain ID] [address]`\n\n' \
         '3. Query a transaction:\n' \
         '`$tx_info [chain ID] [transaction hash ID]`\n\n' \
         '4. Query the faucet and node status:\n' \
         '`$faucet_status [chain ID]`\n\n' \
         '5. Query the faucet address: \n' \
         '`$faucet_address [chain ID]`\n\n' \
-        f'Example request: `$request {chains[list(chains.keys())[0]]["name"]} cosmos1j7qzunvzx4cdqya80wvnrsmzyt9069d3gwhu5p`\n\n'
+        f'Example request: `$request {chains[list(chains.keys())[0]]["chain_id"]} cosmos1j7qzunvzx4cdqya80wvnrsmzyt9069d3gwhu5p`\n\n'
     
 
 COMMAND_LIST = [
@@ -131,13 +124,14 @@ async def get_faucet_balance(chain: dict) -> Optional[str]:
     """
     Returns the balance for the chain's denomination, or None if not found
     """
-    # Use chain-specific denom if available, otherwise use global DENOM
-    target_denom = chain.get('denom', DENOM if DENOM else 'uatom')
+    # Use chain-specific denom if available, otherwise use uatom
+    target_denom = chain.get('denom', 'uatom')
     
-    balances = gaia.get_balance(
+    balances = binary_calls.get_balance(
         address=chain['faucet_address'],
         node=chain['node_url'],
-        chain_id=chain['chain_id'])
+        chain_id=chain['chain_id'],
+        binary=chain['binary'])
     for balance in balances:
         if balance['denom'] == target_denom:
             return balance['amount'] + target_denom
@@ -150,42 +144,43 @@ async def balance_request(address: str, chain: dict) -> str:
     """
     try:
         # check address is valid
-        result = gaia.check_address(address)
-        if result['human'] == ADDRESS_PREFIX:
+        result = binary_calls.check_address(address, binary=chain['binary'])
+        if result['human'] == chain['prefix']:
             try:
-                balance = gaia.get_balance(
+                balance = binary_calls.get_balance(
                     address=address,
                     node=chain["node_url"],
-                    chain_id=chain["chain_id"])
+                    chain_id=chain["chain_id"],
+                    binary=chain["binary"])
                 return f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```\n{tabulate(balance)}\n```\n'
             except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
                 logging.error('Balance request failed: %s', ex)
-                return '❗ gaia could not handle your request'
+                return f'❗ {chain["binary"]} could not handle your request'
         else:
-            return f'❗ Expected `{ADDRESS_PREFIX}` prefix'
+            return f'❗ Expected `{chain["prefix"]}` prefix'
     except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
         logging.error('Address verification failed: %s', ex)
-        return '❗ gaia could not verify the address'
+        return f'❗ {chain["binary"]} could not verify the address'
 
 
 async def faucet_status(chain: dict) -> str:
     """
     Provide node and faucet info
     """
-    logging.info('Faucet status requested for %s', chain['name'])
+    logging.info('Faucet status requested for %s', chain['chain_id'])
     try:
-        node_status = gaia.get_node_status(node=chain['node_url'])
+        node_status = binary_calls.get_node_status(node=chain['node_url'], binary=chain['binary']) 
         if node_status.keys():
             return f'```\n' \
                 f'Node moniker:       {node_status["moniker"]}\n' \
                 f'Node last block:    {node_status["last_block"]}\n' \
                 f'Faucet address:     {chain["faucet_address"]}\n' \
-                f'Amount per request: {chain["amount_to_send"]}{DENOM}\n' \
+                f'Amount per request: {chain["amount_to_send"]}{chain["denom"]}\n' \
                 f'```'
         return ''
     except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
         logging.error('Faucet status request failed: %s', ex)
-        return '❗ gaia could not handle your request'
+        return f'❗ {chain["binary"]} could not handle your request'
 
 
 async def transaction_info(hash_id: str, chain: dict) -> str:
@@ -195,10 +190,11 @@ async def transaction_info(hash_id: str, chain: dict) -> str:
     # Extract hash ID
     if len(hash_id) == TX_HASH_LENGTH:
         try:
-            res = gaia.get_tx_info(
+            res = binary_calls.get_tx_info(
                 hash_id=hash_id,
                 node=chain['node_url'],
-                chain_id=chain['chain_id'])
+                chain_id=chain['chain_id'],
+                binary=chain['binary'])
             if res is None:
                 return '❗ Transaction is not of type MsgSend or could not be found'
             return f'```' \
@@ -209,7 +205,7 @@ async def transaction_info(hash_id: str, chain: dict) -> str:
 
         except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
             logging.error('Transaction info request failed: %s', ex)
-            return '❗ gaia could not handle your request'
+            return f'❗ {chain["binary"]} could not handle your request'
     else:
         return f'❗ Hash ID must be {TX_HASH_LENGTH} characters long, received `{len(hash_id)}`'
 
@@ -236,7 +232,7 @@ def _check_single_time_limit(entity_id: str, chain: dict, message_timestamp: flo
     Helper function to check if a single entity (user or address) is time-blocked.
     Returns (is_blocked, reply_message)
     """
-    chain_requests = ACTIVE_REQUESTS[chain['name']]
+    chain_requests = ACTIVE_REQUESTS[chain['chain_id']]
     
     if entity_id not in chain_requests:
         return False, None
@@ -255,7 +251,7 @@ def _register_request_limits(requester: str, address: str, chain: dict, message_
     """
     Register time limits for both requester and address
     """
-    chain_requests = ACTIVE_REQUESTS[chain['name']]
+    chain_requests = ACTIVE_REQUESTS[chain['chain_id']]
     chain_requests[requester] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
     chain_requests[address] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
 
@@ -320,12 +316,14 @@ def _build_transaction_request(chain: dict, address: str) -> dict:
     Build the transaction request dictionary
     """
     return {
+        'binary': chain['binary'],
         'sender': chain['faucet_address'],
         'recipient': address,
-        'amount': chain['amount_to_send'] + DENOM,
-        'fees': chain['tx_fees'] + DENOM,
+        'amount': chain['amount_to_send'] + chain['denom'],
+        'fees': chain['tx_fees'] + chain['denom'],
         'chain_id': chain['chain_id'],
-        'node': chain['node_url']
+        'node': chain['node_url'],
+        'home': chain['home_folder']
     }
 
 
@@ -336,17 +334,19 @@ async def _execute_token_transfer(requester, address: str, chain: dict, delta: i
     """
     request = _build_transaction_request(chain, address)
     
-    # Make gaia call and send the response back
-    transfer = gaia.tx_send(request)
+    # Make binary call and send the response back
+    transfer = binary_calls.tx_send(request)
+    if transfer is None:
+        raise RuntimeError('Transaction failed')
     logging.info('%s requested tokens for %s in %s',
-                 requester, address, chain['name'])
+                 requester, address, chain['chain_id'])
     now = datetime.datetime.now()
 
     # Get faucet balance and save to transaction log
     balance = await get_faucet_balance(chain)
     await save_transaction_statistics(f'{now.isoformat(timespec="seconds")},'
-                                      f'{chain["name"]},{address},'
-                                      f'{chain["amount_to_send"] + DENOM},'
+                                      f'{chain["chain_id"]},{address},'
+                                      f'{chain["amount_to_send"] + chain["denom"]},'
                                       f'{transfer},'
                                       f'{balance}')
     
@@ -363,22 +363,22 @@ async def token_request(requester, address: str, chain: dict) -> str:
     # Check address
     try:
         # check address is valid
-        result = gaia.check_address(address)
-        if result['human'] != ADDRESS_PREFIX:
-            return f'❗ Expected `{ADDRESS_PREFIX}` prefix'
+        result = binary_calls.check_address(address, chain['binary'])
+        if result['human'] != chain['prefix']:
+            return f'❗ Expected `{chain["prefix"]}` prefix'
     except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
         logging.error('Address verification failed for %s: %s', address, ex)
-        return '❗ The address could not be verified'
+        return f'❗ {chain["binary"]} could not verify the address'
 
     delta = int(chain["amount_to_send"])
     
     # Use lock to prevent race conditions on shared state
-    async with chain_locks[chain['name']]:
+    async with chain_locks[chain['chain_id']]:
         # Check whether the faucet has reached the daily cap
         if not check_daily_cap(chain=chain, delta=delta):
             logging.info('%s requested tokens for %s in %s '
                          'but the daily cap has been reached',
-                         requester, address, chain['name'])
+                         requester, address, chain['chain_id'])
             return 'Sorry, the daily cap for this faucet has been reached'
         
         # Check whether user or address have received tokens on this chain
@@ -387,7 +387,7 @@ async def token_request(requester, address: str, chain: dict) -> str:
         
         if not approved:
             logging.info('%s requested tokens for %s in %s and was rejected',
-                         requester, address, chain['name'])
+                         requester, address, chain['chain_id'])
             return reply
         
         # Increment the daily tally now that we're committed to the request
@@ -397,10 +397,10 @@ async def token_request(requester, address: str, chain: dict) -> str:
             reply = await _execute_token_transfer(requester, address, chain, delta)
         except (KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError, subprocess.CalledProcessError) as ex:
             # Rollback state changes on failure
-            del ACTIVE_REQUESTS[chain['name']][requester.id]
-            del ACTIVE_REQUESTS[chain['name']][address]
+            del ACTIVE_REQUESTS[chain['chain_id']][requester.id]
+            del ACTIVE_REQUESTS[chain['chain_id']][address]
             chain['day_tally'] -= delta
-            logging.error('Token transfer failed for %s to %s: %s', requester, address, ex)
+            logging.error('Token transfer failed for %s to %s in %s: %s', requester, address, chain['chain_id'], ex)
             reply = '❗ request could not be processed'
     
     return reply
@@ -437,8 +437,8 @@ async def on_message(message) -> None:
         help_reply += '**Supported chain IDs**\n'
         for chain, data in chains.items():
             help_reply += f'* `{chain}`\n'
-            help_reply += f'  * {data["description"]}\n'
-            help_reply += f'  * {data["website"]}\n'
+            help_reply += f'  * {data["description"]}\n' if data['description'] else ''
+            help_reply += f'  * {data["website"]}\n' if data['website'] else ''
         await message.reply(help_reply)
         return
 
