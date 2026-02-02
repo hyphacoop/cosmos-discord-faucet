@@ -14,9 +14,8 @@ A Discord bot for dispensing testnet tokens.
 ## Requirements
 
 - python 3.11.12+
-- gaia v11.0.0+
-- Initialized gaia instance
-- Faucet keys in gaia keyring
+- cosmos binary avaliable in path
+- faucet key in test keyring
 
 ## Installation
 

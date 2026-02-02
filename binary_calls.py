@@ -1,5 +1,5 @@
 """
-gaiad utility functions
+binary utility functions
 - query bank balance
 - query tx
 - node status
