@@ -3,6 +3,7 @@
 ## UNRELEASED
 
 - [**BREAKING CHANGE**] Updated `discord.py` to `v2.3.2` ([#35](https://github.com/hyphacoop/cosmos-discord-faucet/pull/35))
+- A per-chain binary can be now specified in config.toml.
 
 ## v0.7.0
 
