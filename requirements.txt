@@ -4,7 +4,7 @@ astroid==2.11.4
 async-timeout==3.0.1
 attrs==21.4.0
 autopep8==1.6.0
-chardet==4.0.0
+chardet==5.2.0
 dill==0.3.4
 discord.py==2.3.2
 idna==3.3
