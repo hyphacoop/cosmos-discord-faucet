@@ -1,8 +1,9 @@
 # Changelog
 
-## UNRELEASED
+## v0.8.0
 
 - [**BREAKING CHANGE**] Updated `discord.py` to `v2.3.2` ([#35](https://github.com/hyphacoop/cosmos-discord-faucet/pull/35))
+  - Please note that the intents setting must be configured accordingly for the Discord server in order for messages to be read by the bot.
 - A per-chain binary can be now specified in config.toml.
 
 ## v0.7.0
