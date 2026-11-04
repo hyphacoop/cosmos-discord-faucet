@@ -9,3 +9,6 @@ lint.sh
 
 # Logs
 transactions.csv
+
+# Local configuration
+config.toml

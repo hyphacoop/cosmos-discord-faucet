@@ -6,6 +6,9 @@ transactions_log = "transactions.csv"
 [chains]
     [chains.chain-1]
     binary = "gaiad"
+    # "~" is expanded to the user's home directory. In Docker the bot runs as
+    # root, so this resolves to /root/... and the keyring must be mounted at
+    # <home_folder>/keyring-test (see README).
     home_folder = "~/.gaia"
     prefix = "cosmos"
     denom = "uatom"
@@ -21,6 +24,9 @@ transactions_log = "transactions.csv"
 
     [chains.chain-2]
     binary = "simd"
+    # "~" is expanded to the user's home directory. In Docker the bot runs as
+    # root, so this resolves to /root/... and the keyring must be mounted at
+    # <home_folder>/keyring-test (see README).
     home_folder = "~/.simd"
     prefix = "cosmos"
     denom = "stake"
