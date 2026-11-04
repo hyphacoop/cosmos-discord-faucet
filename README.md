@@ -28,12 +28,68 @@ cosmos-discord-faucet$ pip install -r requirements.txt
 ```
 
 1. [Create a Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token)
-2. Add the bot token to `config.toml`
-3. Modify the nodes, faucet addresses, amount to send, etc. in `config.toml`
+2. Copy the example config: `cp config.toml.example config.toml`
+3. Add the bot token to `config.toml`
+4. Modify the nodes, faucet addresses, amount to send, etc. in `config.toml`
 
 ## Usage
 
-This bot can be run stand-alone (mostly for testing), or as a service.
+This bot can be run stand-alone (mostly for testing), as a service, or in a Docker container.
+
+### Docker
+
+#### Building the Docker Image
+
+```bash
+docker build -t cosmos-discord-faucet .
+```
+
+The Dockerfile includes:
+- Python 3.11 runtime
+- Automatic download of the chain binary (gaiad v25.3.2 by default)
+- All Python dependencies from requirements.txt
+
+To use a different binary or version, pass build arguments:
+- `BINARY_NAME` (default: `gaiad`): the name the binary is installed as. It must match the `binary` setting in `config.toml`.
+- `BINARY_URL` (default: the gaiad v25.3.2 linux-amd64 release): where to download the binary from
+
+```bash
+docker build -t cosmos-discord-faucet \
+  --build-arg BINARY_NAME=gaiad \
+  --build-arg BINARY_URL=https://github.com/cosmos/gaia/releases/download/v25.3.2/gaiad-v25.3.2-linux-amd64 \
+  .
+```
+
+#### Running the Docker Container
+
+To run the container with your local configuration and persistent transaction logs:
+
+```bash
+docker run -d \
+  --name cosmos-faucet \
+  -v $(pwd)/config.toml:/app/config.toml:ro \
+  -v $(pwd)/transactions.csv:/app/transactions.csv \
+  cosmos-discord-faucet
+```
+
+**Volume Mounts:**
+- `-v $(pwd)/config.toml:/app/config.toml:ro` - Mounts your config file as read-only
+- `-v $(pwd)/transactions.csv:/app/transactions.csv` - Persists transaction logs to your host
+
+**Container Management:**
+```bash
+# View logs
+docker logs -f cosmos-faucet
+
+# Stop the container
+docker stop cosmos-faucet
+
+# Restart the container
+docker restart cosmos-faucet
+
+# Remove the container
+docker rm cosmos-faucet
+```
 
 ### Stand-alone
 
