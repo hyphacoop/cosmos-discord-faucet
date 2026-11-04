@@ -13,7 +13,7 @@ RUN apt-get update && \
 
 # Chain binary (override with --build-arg)
 ARG BINARY_NAME=gaiad
-ARG BINARY_URL=https://github.com/cosmos/gaia/releases/download/v29.1.0/gaiad-v29.1.0-linux-amd64
+ARG BINARY_URL=https://github.com/cosmos/gaia/releases/download/v29.1.0-rc0/gaiad-v29.1.0-rc0-linux-amd64
 
 # Download and install the chain binary
 RUN wget -q "${BINARY_URL}" -O /usr/local/bin/${BINARY_NAME} && \

@@ -7,6 +7,7 @@ import asyncio
 import time
 import datetime
 import logging
+import os
 import sys
 import subprocess
 from tabulate import tabulate
@@ -67,6 +68,8 @@ def load_config(config_path: str = 'config.toml') -> None:
             config['discord']['channels_to_listen'].split(','))
         chains = config['chains']
         for chain in chains:
+            chains[chain]["home_folder"] = os.path.expanduser(
+                chains[chain]["home_folder"])
             chains[chain]["active_day"] = datetime.datetime.today().date()
             chains[chain]["day_tally"] = 0
             chain_locks[chain] = asyncio.Lock()  # Create lock for each chain
