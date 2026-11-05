@@ -14,8 +14,10 @@ A Discord bot for dispensing testnet tokens.
 ## Requirements
 
 - python 3.11.12+
-- cosmos binary avaliable in path
-- faucet key in test keyring
+- gRPC access to a node for each chain (port 9090 by default)
+- the mnemonic of the faucet key for each chain
+
+No chain binary is needed: the bot builds, signs and broadcasts transactions itself using [cosmpy](https://github.com/fetchai/cosmpy).
 
 ## Installation
 
@@ -27,10 +29,25 @@ cosmos-discord-faucet$ source .env/bin/activate
 cosmos-discord-faucet$ pip install -r requirements.txt
 ```
 
-1. [Create a Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token)
+1. Set up the Discord app:
+   1. Create an application and bot in the [Discord Developer Portal](https://discord.com/developers/applications) and copy the bot token.
+   2. Leave **Message Content Intent** turned off. The bot only uses slash commands, so it doesn't need any privileged intents.
+   3. Invite the bot to your server with the `bot` and `applications.commands` scopes (OAuth2 → URL Generator).
 2. Copy the example config: `cp config.toml.example config.toml`
 3. Add the bot token to `config.toml`
-4. Modify the nodes, faucet addresses, amount to send, etc. in `config.toml`
+4. Modify the gRPC endpoints, faucet addresses, amount to send, etc. in `config.toml`
+5. For each chain, save the faucet key's mnemonic in a file and set `mnemonic_file` to its path:
+
+```
+echo "word1 word2 ... word24" > ~/.faucet/chain-1.mnemonic
+chmod 600 ~/.faucet/chain-1.mnemonic
+```
+
+The bot derives the key with the standard Cosmos HD path (`m/44'/118'/0'/0/0`, the `gaiad keys add` default) and exits at startup if the derived address doesn't match `faucet_address`.
+
+### Restricting channels
+
+By default the commands can be used in any channel the bot can see. To limit them, go to **Server Settings → Integrations → *your bot*** and set which channels (and roles) can use each command.
 
 ## Usage
 
@@ -44,57 +61,55 @@ This bot can be run stand-alone (mostly for testing), as a service, or in a Dock
 docker build -t cosmos-discord-faucet .
 ```
 
-The Dockerfile includes:
-- Python 3.11 runtime
-- Automatic download of the chain binary (gaiad v25.3.2 by default)
-- All Python dependencies from requirements.txt
-
-To use a different binary or version, pass build arguments:
-- `BINARY_NAME` (default: `gaiad`): the name the binary is installed as. It must match the `binary` setting in `config.toml`.
-- `BINARY_URL` (default: the gaiad v25.3.2 linux-amd64 release): where to download the binary from
-
-```bash
-docker build -t cosmos-discord-faucet \
-  --build-arg BINARY_NAME=gaiad \
-  --build-arg BINARY_URL=https://github.com/cosmos/gaia/releases/download/v25.3.2/gaiad-v25.3.2-linux-amd64 \
-  .
-```
+The image contains the Python 3.11 runtime and the dependencies from requirements.txt. No chain binary is needed.
 
 #### Running the Docker Container
 
-To run the container with your local configuration, faucet keyring, and persistent transaction logs:
+To run the container with your local configuration, faucet mnemonics, and persistent transaction logs:
 
 ```bash
 docker run -d \
   --name cosmos-faucet \
+  --restart unless-stopped \
   -v $(pwd)/config.toml:/app/config.toml:ro \
   -v $(pwd)/transactions.csv:/app/transactions.csv \
-  -v $HOME/.gaia/keyring-test:/root/.gaia/keyring-test:ro \
+  -v $HOME/.faucet/chain-1.mnemonic:/secrets/chain-1.mnemonic:ro \
   cosmos-discord-faucet
 ```
+
+**Restarts:**
+`--restart unless-stopped` brings the container back after a crash or a reboot, unless you stopped it with `docker stop`. Docker itself must start at boot (`sudo systemctl enable docker`; most installs already do this). To add the policy to an existing container without recreating it, run `docker update --restart unless-stopped cosmos-faucet`.
+
+If the config is invalid (for example a missing mnemonic file), the bot exits at startup and Docker keeps retrying with increasing delays. Check `docker logs cosmos-faucet` if the bot doesn't come online.
 
 **Volume Mounts:**
 - `-v $(pwd)/config.toml:/app/config.toml:ro` - Mounts your config file as read-only
 - `-v $(pwd)/transactions.csv:/app/transactions.csv` - Persists transaction logs to your host
-- `-v $HOME/.gaia/keyring-test:/root/.gaia/keyring-test:ro` - Mounts the faucet keyring as read-only so the binary can sign transactions
+- `-v $HOME/.faucet/chain-1.mnemonic:/secrets/chain-1.mnemonic:ro` - Mounts the faucet mnemonic as read-only. Add one mount per chain.
 
-**Keyring:**
-The bot signs transfers with `--keyring-backend test --home <home_folder>`, so the faucet key must be available at `<home_folder>/keyring-test` inside the container.
-- The container runs as root, so a `home_folder` of `~/.gaia` resolves to `/root/.gaia`. Add one keyring mount per chain, matching each chain's `home_folder`.
-- The key must already exist on the host, for example from `gaiad keys add faucet --keyring-backend test`. Its address must match `faucet_address`.
-- Mount only the `keyring-test` directory, not the whole home folder, so node data and validator keys stay out of the container. The binary may write `config/client.toml` into the home folder on first use. That write goes to the container's writable layer, which is fine.
+**Mnemonic paths:**
+The bot reads `mnemonic_file` from inside the container, so it must be the container path (the right side of the `-v` mount), not the path on your host. The container runs as root, so `~` in `mnemonic_file` expands to `/root`. If the path doesn't exist in the container, the bot exits at startup with `Could not set up chain client: ... No such file or directory`.
 
-To check that the container can see the key:
+There are two ways to set this up:
 
-```bash
-docker run --rm \
-  -v $HOME/.gaia/keyring-test:/root/.gaia/keyring-test:ro \
-  cosmos-discord-faucet \
-  gaiad keys list --home /root/.gaia --keyring-backend test
-```
+1. Mount each file under `/secrets` and use those paths in `config.toml` (as in the example above):
+   ```bash
+   -v $HOME/.faucet/chain-1.mnemonic:/secrets/chain-1.mnemonic:ro \
+   -v $HOME/.faucet/chain-2.mnemonic:/secrets/chain-2.mnemonic:ro \
+   ```
+   ```toml
+   [chains.chain-1]
+   mnemonic_file = "/secrets/chain-1.mnemonic"
+   [chains.chain-2]
+   mnemonic_file = "/secrets/chain-2.mnemonic"
+   ```
+2. Keep `mnemonic_file = "~/.faucet/chain-1.mnemonic"` (as in `config.toml.example`) and mount the whole folder at `/root/.faucet`, so the same `config.toml` works with and without Docker:
+   ```bash
+   -v $HOME/.faucet:/root/.faucet:ro \
+   ```
 
 **Networking:**
-If the node runs on the Docker host (for example `node_url = "http://localhost:26657"`), `localhost` inside the container doesn't reach it. Either add `--network host` to `docker run` (Linux), or set `node_url` to `http://host.docker.internal:26657`. On Linux, the second option also needs `--add-host=host.docker.internal:host-gateway`.
+If the node runs on the Docker host (for example `grpc_url = "grpc+http://localhost:9090"`), `localhost` inside the container doesn't reach it. Either add `--network host` to `docker run` (Linux), or set `grpc_url` to `grpc+http://host.docker.internal:9090`. On Linux, the second option also needs `--add-host=host.docker.internal:host-gateway`.
 
 **Container Management:**
 ```bash
@@ -133,22 +148,17 @@ systemctl status cosmos-discord-faucet.service
 
 ## Discord Commands
 
+The bot uses slash commands. Discord can take up to an hour to show them after the bot first starts, or after a command changes.
+
 1. Request tokens through the faucet:  
-`$request [chain] [cosmos address]`
-   - The response will include a ✅ and the transaction hash if it was successful.
+`/request address:<cosmos address>` (when one chain is configured)  
+`/request chain:<chain> address:<cosmos address>` (when several chains are configured)
+   - With several chains, pick the chain from the list. To give users the address-only command for each chain, run one bot per chain, each with its own config and Discord app.
+   - The response will include a ✅ and the transaction link or hash if it was successful.
+   - If the request is rejected (invalid address, cooldown, or daily cap), the reply is only visible to the person who made the request.
 
-2. Request the faucet and node status:  
-`$faucet_status [chain]`
-
-3. Request the faucet address:  
-`$faucet_address [chain]`
-
-4. Request information for a specific transaction:  
-`$tx_info [chain] [transaction hash ID]`
-
-5. Request the address balance:  
-`$balance [chain] [cosmos address]`  
-
+2. Show usage and the supported chains (only visible to you):  
+`/help`
 
 ## Analytics
 
@@ -183,5 +193,5 @@ systemctl status cosmos-faucet-analytics.service
 ## Acknowledgements
 
 This repo is based on [cosmos-discord-faucet](https://github.com/c29r3/cosmos-discord-faucet):
-- The cosmospy library calls have been replaced by calls to `gaiad` to avoid deprecated endpoints and messages.
+- The cosmospy library calls were replaced by calls to `gaiad` to avoid deprecated endpoints and messages, and later by in-process signing with cosmpy.
 - The address prefix has been switched to `cosmos`.
