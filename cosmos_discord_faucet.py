@@ -1,5 +1,5 @@
 """
-Sets up a Discord bot to provide info and tokens
+Sets up a Discord bot that dispenses testnet tokens through slash commands
 
 """
 
@@ -9,14 +9,14 @@ import datetime
 import logging
 import os
 import sys
-import subprocess
-from tabulate import tabulate
-import aiofiles as aiof
-import toml
-import discord
-import binary_calls as binary_calls
-
 from typing import Optional, Tuple
+
+import aiofiles as aiof
+import discord
+import toml
+from discord import app_commands
+
+from chain_client import ChainClient, ChainError
 
 # Turn Down Discord Logging
 disc_log = logging.getLogger('discord')
@@ -27,30 +27,30 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
 
 # Global variables (will be initialized by load_config)
-config = None
 TX_LOG_PATH = None
 REQUEST_TIMEOUT = None
 DISCORD_TOKEN = None
-LISTENING_CHANNELS = None
+# Chain configs keyed by table name in config.toml. load_config adds runtime
+# state to each: 'key', 'client' (ChainClient), 'requests' (cooldowns),
+# 'active_day' and 'day_tally'.
 chains = None
-ACTIVE_REQUESTS = None
-chain_locks = {}  # Locks for each chain to prevent race conditions
 
 APPROVE_EMOJI = '✅'
 REJECT_EMOJI = '🚫'
+GENERIC_ERROR_REPLY = '❗ request could not be processed'
 
 # Constants
-TX_HASH_LENGTH = 64  # Expected length of transaction hash ID
 TWO_HOURS_IN_MINUTES = 120  # Threshold for displaying hours vs minutes
+MAX_CHAIN_CHOICES = 25  # Discord limit on slash command choices
+MAX_ADDRESS_LENGTH = 128
 
 
 def load_config(config_path: str = 'config.toml') -> None:
     """
     Load configuration from TOML file and initialize global variables
     """
-    global config, TX_LOG_PATH, REQUEST_TIMEOUT
-    global DISCORD_TOKEN, LISTENING_CHANNELS, chains, ACTIVE_REQUESTS
-    
+    global TX_LOG_PATH, REQUEST_TIMEOUT, DISCORD_TOKEN, chains
+
     try:
         config = toml.load(config_path)
     except FileNotFoundError:
@@ -64,54 +64,50 @@ def load_config(config_path: str = 'config.toml') -> None:
         TX_LOG_PATH = config['transactions_log']
         REQUEST_TIMEOUT = int(config['discord']['request_timeout'])
         DISCORD_TOKEN = str(config['discord']['bot_token'])
-        LISTENING_CHANNELS = list(
-            config['discord']['channels_to_listen'].split(','))
         chains = config['chains']
-        for chain in chains:
-            chains[chain]["home_folder"] = os.path.expanduser(
-                chains[chain]["home_folder"])
-            chains[chain]["active_day"] = datetime.datetime.today().date()
-            chains[chain]["day_tally"] = 0
-            chain_locks[chain] = asyncio.Lock()  # Create lock for each chain
-        ACTIVE_REQUESTS = {chain: {} for chain in chains}
+        if len(chains) > MAX_CHAIN_CHOICES:
+            logging.critical('At most %d chains are supported, found %d',
+                             MAX_CHAIN_CHOICES, len(chains))
+            sys.exit(1)
+        for key, chain in chains.items():
+            chain['key'] = key
+            chain['mnemonic_file'] = os.path.expanduser(chain['mnemonic_file'])
+            chain['active_day'] = datetime.datetime.today().date()
+            chain['day_tally'] = 0
+            chain['requests'] = {}
+            chain['client'] = ChainClient(chain)
+            logging.info('Loaded chain %s (%s) with faucet address %s',
+                         key, chain['chain_id'], chain['client'].address)
     except KeyError as key:
         logging.critical('Key could not be found in config: %s', key)
         sys.exit(1)
+    except (OSError, ValueError) as ex:
+        logging.critical('Could not set up chain client: %s', ex)
+        sys.exit(1)
 
 
-HELP_MSG = None  # Will be set after config is loaded
-
-
-def initialize_help_message() -> None:
+def build_help_message() -> str:
     """
-    Initialize the help message after config is loaded
+    Build the /help reply from the configured chains
     """
-    global HELP_MSG
-    HELP_MSG = '**List of available commands**\n' \
-        '1. Request tokens:\n' \
-        '`$request [chain ID] [address]`\n\n' \
-        '2. Query an address balance:\n' \
-        '`$balance [chain ID] [address]`\n\n' \
-        '3. Query a transaction:\n' \
-        '`$tx_info [chain ID] [transaction hash ID]`\n\n' \
-        '4. Query the faucet and node status:\n' \
-        '`$faucet_status [chain ID]`\n\n' \
-        '5. Query the faucet address: \n' \
-        '`$faucet_address [chain ID]`\n\n' \
-        f'Example request: `$request {chains[list(chains.keys())[0]]["chain_id"]} cosmos1j7qzunvzx4cdqya80wvnrsmzyt9069d3gwhu5p`\n\n'
-    
-
-COMMAND_LIST = [
-    '$request',
-    '$faucet_status',
-    '$faucet_address',
-    '$tx_info',
-    '$balance'
-]
-
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
+    example_chain = next(iter(chains.values()))
+    example_address = f'{example_chain["prefix"]}1...'
+    if len(chains) == 1:
+        usage = '`/request address:<address>`'
+        example = f'/request address:{example_address}'
+    else:
+        usage = '`/request chain:<chain> address:<address>`'
+        example = f'/request chain:{example_chain["key"]} address:{example_address}'
+    help_msg = '**Request tokens**\n' \
+        f'{usage}\n' \
+        f'You can request tokens once every {int(REQUEST_TIMEOUT / 3600)} hours per chain.\n\n' \
+        f'Example: `{example}`\n\n' \
+        '**Supported chains**\n'
+    for key, data in chains.items():
+        help_msg += f'* `{key}` (chain ID `{data["chain_id"]}`)\n'
+        help_msg += f'  * {data["description"]}\n' if data.get('description') else ''
+        help_msg += f'  * {data["website"]}\n' if data.get('website') else ''
+    return help_msg
 
 
 async def save_transaction_statistics(transaction: str) -> None:
@@ -125,92 +121,14 @@ async def save_transaction_statistics(transaction: str) -> None:
 
 async def get_faucet_balance(chain: dict) -> Optional[str]:
     """
-    Returns the balance for the chain's denomination, or None if not found
-    """
-    # Use chain-specific denom if available, otherwise use uatom
-    target_denom = chain.get('denom', 'uatom')
-    
-    balances = binary_calls.get_balance(
-        address=chain['faucet_address'],
-        node=chain['node_url'],
-        chain_id=chain['chain_id'],
-        binary=chain['binary'])
-    for balance in balances:
-        if balance['denom'] == target_denom:
-            return balance['amount'] + target_denom
-    return None
-
-
-async def balance_request(address: str, chain: dict) -> str:
-    """
-    Provide the balance for a given address and chain
+    Returns the faucet balance for the chain's denom, or None if the query fails
     """
     try:
-        # check address is valid
-        result = binary_calls.check_address(address, binary=chain['binary'])
-        if result['human'] == chain['prefix']:
-            try:
-                balance = binary_calls.get_balance(
-                    address=address,
-                    node=chain["node_url"],
-                    chain_id=chain["chain_id"],
-                    binary=chain["binary"])
-                return f'Balance for address `{address}` in chain `{chain["chain_id"]}`:\n```\n{tabulate(balance)}\n```\n'
-            except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
-                logging.error('Balance request failed: %s', ex)
-                return f'❗ {chain["binary"]} could not handle your request'
-        else:
-            return f'❗ Expected `{chain["prefix"]}` prefix'
-    except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
-        logging.error('Address verification failed: %s', ex)
-        return f'❗ {chain["binary"]} could not verify the address'
-
-
-async def faucet_status(chain: dict) -> str:
-    """
-    Provide node and faucet info
-    """
-    logging.info('Faucet status requested for %s', chain['chain_id'])
-    try:
-        node_status = binary_calls.get_node_status(node=chain['node_url'], binary=chain['binary']) 
-        if node_status.keys():
-            return f'```\n' \
-                f'Node moniker:       {node_status["moniker"]}\n' \
-                f'Node last block:    {node_status["last_block"]}\n' \
-                f'Faucet address:     {chain["faucet_address"]}\n' \
-                f'Amount per request: {chain["amount_to_send"]}{chain["denom"]}\n' \
-                f'```'
-        return ''
-    except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
-        logging.error('Faucet status request failed: %s', ex)
-        return f'❗ {chain["binary"]} could not handle your request'
-
-
-async def transaction_info(hash_id: str, chain: dict) -> str:
-    """
-    Provide info on a specific transaction
-    """
-    # Extract hash ID
-    if len(hash_id) == TX_HASH_LENGTH:
-        try:
-            res = binary_calls.get_tx_info(
-                hash_id=hash_id,
-                node=chain['node_url'],
-                chain_id=chain['chain_id'],
-                binary=chain['binary'])
-            if res is None:
-                return '❗ Transaction is not of type MsgSend or could not be found'
-            return f'```' \
-                f'From:    {res["sender"]}\n' \
-                f'To:      {res["receiver"]}\n' \
-                f'Amount:  {res["amount"]}\n' \
-                f'Height:  {res["height"]}\n```'
-
-        except (KeyError, ValueError, ConnectionError, TimeoutError, subprocess.CalledProcessError) as ex:
-            logging.error('Transaction info request failed: %s', ex)
-            return f'❗ {chain["binary"]} could not handle your request'
-    else:
-        return f'❗ Hash ID must be {TX_HASH_LENGTH} characters long, received `{len(hash_id)}`'
+        amount = await asyncio.to_thread(chain['client'].get_faucet_balance)
+    except ChainError as ex:
+        logging.error('Faucet balance query failed for %s: %s', chain['key'], ex)
+        return None
+    return f'{amount}{chain["denom"]}'
 
 
 def format_timeout_message(check_time: float, message_timestamp: float) -> str:
@@ -230,42 +148,42 @@ def format_timeout_message(check_time: float, message_timestamp: float) -> str:
            f'{wait_time}'
 
 
-def _check_single_time_limit(entity_id: str, chain: dict, message_timestamp: float) -> Tuple[bool, Optional[str]]:
+def _check_single_time_limit(entity_id, chain: dict, message_timestamp: float) -> Tuple[bool, Optional[str]]:
     """
     Helper function to check if a single entity (user or address) is time-blocked.
     Returns (is_blocked, reply_message)
     """
-    chain_requests = ACTIVE_REQUESTS[chain['chain_id']]
-    
+    chain_requests = chain['requests']
+
     if entity_id not in chain_requests:
         return False, None
-    
+
     check_time = chain_requests[entity_id]['next_request']
     if check_time > message_timestamp:
         reply = format_timeout_message(check_time, message_timestamp)
         return True, reply
-    
+
     # Time limit expired, remove the entry
     del chain_requests[entity_id]
     return False, None
 
 
-def _register_request_limits(requester: str, address: str, chain: dict, message_timestamp: float) -> None:
+def _register_request_limits(requester, address: str, chain: dict, message_timestamp: float) -> None:
     """
     Register time limits for both requester and address
     """
-    chain_requests = ACTIVE_REQUESTS[chain['chain_id']]
+    chain_requests = chain['requests']
     chain_requests[requester] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
     chain_requests[address] = {'next_request': message_timestamp + REQUEST_TIMEOUT}
 
 
-def check_time_limits(requester: str, address: str, chain: dict) -> Tuple[bool, Optional[str]]:
+def check_time_limits(requester, address: str, chain: dict) -> Tuple[bool, Optional[str]]:
     """
     Returns True, None if the given requester and address are not time-blocked for the given chain
     Returns False, reply if either of them is still on time-out; msg is the reply to the requester
     """
     message_timestamp = time.time()
-    
+
     # Check user allowance
     is_blocked, reply = _check_single_time_limit(requester, chain, message_timestamp)
     if is_blocked:
@@ -303,7 +221,7 @@ def check_daily_cap(chain: dict, delta: int) -> bool:
 def increment_daily_tally(chain: dict, delta: int) -> None:
     """
     Increment or reset the daily tally
-    Should only be called within a lock
+    Must follow check_daily_cap with no await in between (see reserve_request)
     """
     today = datetime.datetime.today().date()
     if today > chain['active_day']:
@@ -314,33 +232,10 @@ def increment_daily_tally(chain: dict, delta: int) -> None:
         chain['day_tally'] += delta
 
 
-def _build_transaction_request(chain: dict, address: str) -> dict:
+async def record_transfer(requester, address: str, chain: dict, transfer: str) -> str:
     """
-    Build the transaction request dictionary
+    Log a completed transfer to the transaction log and return the reply message
     """
-    return {
-        'binary': chain['binary'],
-        'sender': chain['faucet_address'],
-        'recipient': address,
-        'amount': chain['amount_to_send'] + chain['denom'],
-        'fees': chain['tx_fees'] + chain['denom'],
-        'chain_id': chain['chain_id'],
-        'node': chain['node_url'],
-        'home': chain['home_folder']
-    }
-
-
-async def _execute_token_transfer(requester, address: str, chain: dict, delta: int) -> str:
-    """
-    Execute the token transfer and return the reply message.
-    Raises exceptions on failure for rollback handling.
-    """
-    request = _build_transaction_request(chain, address)
-    
-    # Make binary call and send the response back
-    transfer = binary_calls.tx_send(request)
-    if transfer is None:
-        raise RuntimeError('Transaction failed')
     logging.info('%s requested tokens for %s in %s',
                  requester, address, chain['chain_id'])
     now = datetime.datetime.now()
@@ -352,123 +247,172 @@ async def _execute_token_transfer(requester, address: str, chain: dict, delta: i
                                       f'{chain["amount_to_send"] + chain["denom"]},'
                                       f'{transfer},'
                                       f'{balance}')
-    
+
     # Format reply with block explorer link or hash
     if chain["block_explorer_tx"]:
-        return f'✅  <{chain["block_explorer_tx"]}{transfer}>'
-    else:
-        return f'✅ Hash ID: {transfer}'
+        return f'{APPROVE_EMOJI}  <{chain["block_explorer_tx"]}{transfer}>'
+    return f'{APPROVE_EMOJI} Hash ID: {transfer}'
 
-async def token_request(requester, address: str, chain: dict) -> str:
+
+def reserve_request(requester, address: str, chain: dict) -> Optional[str]:
     """
-    Send tokens to the specified address
+    Run the quick checks for a token request and, if they pass, reserve the
+    cooldowns and daily tally for it.
+    Returns None if the request was reserved, otherwise the rejection reply.
+
+    This must stay synchronous (no awaits), so the check-and-reserve is atomic
+    on the event loop without waiting for a transfer in progress, which can
+    take longer than Discord's 3 second response window.
     """
-    # Check address
-    try:
-        # check address is valid
-        result = binary_calls.check_address(address, chain['binary'])
-        if result['human'] != chain['prefix']:
-            return f'❗ Expected `{chain["prefix"]}` prefix'
-    except (KeyError, ValueError, TypeError, subprocess.CalledProcessError) as ex:
-        logging.error('Address verification failed for %s: %s', address, ex)
-        return f'❗ {chain["binary"]} could not verify the address'
+    # Check address (local bech32 decode, no node call)
+    reason = chain['client'].validate_address(address)
+    if reason is not None:
+        return f'❗ {reason}'
 
     delta = int(chain["amount_to_send"])
-    
-    # Use lock to prevent race conditions on shared state
-    async with chain_locks[chain['chain_id']]:
-        # Check whether the faucet has reached the daily cap
-        if not check_daily_cap(chain=chain, delta=delta):
-            logging.info('%s requested tokens for %s in %s '
-                         'but the daily cap has been reached',
-                         requester, address, chain['chain_id'])
-            return 'Sorry, the daily cap for this faucet has been reached'
-        
-        # Check whether user or address have received tokens on this chain
-        approved, reply = check_time_limits(
-            requester=requester.id, address=address, chain=chain)
-        
-        if not approved:
-            logging.info('%s requested tokens for %s in %s and was rejected',
-                         requester, address, chain['chain_id'])
-            return reply
-        
-        # Increment the daily tally now that we're committed to the request
-        increment_daily_tally(chain, delta)
-        
-        try:
-            reply = await _execute_token_transfer(requester, address, chain, delta)
-        except (KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError, subprocess.CalledProcessError) as ex:
-            # Rollback state changes on failure
-            del ACTIVE_REQUESTS[chain['chain_id']][requester.id]
-            del ACTIVE_REQUESTS[chain['chain_id']][address]
-            chain['day_tally'] -= delta
-            logging.error('Token transfer failed for %s to %s in %s: %s', requester, address, chain['chain_id'], ex)
-            reply = '❗ request could not be processed'
-    
-    return reply
+
+    # Check whether the faucet has reached the daily cap
+    if not check_daily_cap(chain=chain, delta=delta):
+        logging.info('%s requested tokens for %s in %s '
+                     'but the daily cap has been reached',
+                     requester, address, chain['chain_id'])
+        return 'Sorry, the daily cap for this faucet has been reached'
+
+    # Check whether user or address have received tokens on this chain;
+    # registers the cooldowns if not
+    approved, reply = check_time_limits(
+        requester=requester.id, address=address, chain=chain)
+    if not approved:
+        logging.info('%s requested tokens for %s in %s and was rejected',
+                     requester, address, chain['chain_id'])
+        return reply
+
+    # Increment the daily tally now that we're committed to the request
+    increment_daily_tally(chain, delta)
+    return None
 
 
-@client.event
-async def on_ready() -> None:
+def release_request(requester, address: str, chain: dict) -> None:
     """
-    Gets called when the Discord client logs in
+    Undo a reservation made by reserve_request
     """
-    logging.info('Logged into Discord as %s', client.user)
+    chain['requests'].pop(requester.id, None)
+    chain['requests'].pop(address, None)
+    chain['day_tally'] -= int(chain["amount_to_send"])
 
 
-@client.event
-async def on_message(message) -> None:
+async def send_ephemeral_followup(interaction: discord.Interaction, message: str) -> None:
     """
-    Responds to messages on specified channels.
+    Send a message only the user can see after the response was deferred.
+    A public deferral can't be turned ephemeral, so remove the public
+    "thinking" message first.
     """
-    # Ignore messages from the bot itself
-    if message.author == client.user:
-        return
-    
-    # Only listen in specific channels (ignore DMs and channels without names)
-    if not hasattr(message.channel, 'name') or message.channel.name not in LISTENING_CHANNELS:
+    try:
+        await interaction.delete_original_response()
+    except discord.HTTPException as ex:
+        logging.warning('Could not delete deferred response: %s', ex)
+    await interaction.followup.send(message, ephemeral=True)
+
+
+async def handle_request(interaction: discord.Interaction, chain: dict, address: str) -> None:
+    """
+    Handle a /request interaction for the given chain
+    """
+    requester = interaction.user
+    address = address.strip()
+
+    # Quick checks: rejections are only shown to the requester
+    rejection = reserve_request(requester, address, chain)
+    if rejection is not None:
+        await interaction.response.send_message(rejection, ephemeral=True)
         return
 
-    # Validate message content
-    if not message.content or not isinstance(message.content, str):
+    # The reservation is released if anything fails before the tokens are sent
+    try:
+        # Sending can take longer than the 3 seconds Discord allows for a reply
+        await interaction.response.defer(thinking=True)
+        transfer = await asyncio.to_thread(chain['client'].send, address)
+    except ChainError as ex:
+        release_request(requester, address, chain)
+        logging.error('Token transfer failed for %s to %s in %s: %s',
+                      requester, address, chain['chain_id'], ex)
+        await send_ephemeral_followup(interaction, GENERIC_ERROR_REPLY)
         return
+    except BaseException:
+        release_request(requester, address, chain)
+        raise
 
-    message_sections = message.content.split(' ')    
-    if message.content.startswith('$help'):
-        help_reply = HELP_MSG
-        help_reply += '**Supported chain IDs**\n'
-        for chain, data in chains.items():
-            help_reply += f'* `{chain}`\n'
-            help_reply += f'  * {data["description"]}\n' if data['description'] else ''
-            help_reply += f'  * {data["website"]}\n' if data['website'] else ''
-        await message.reply(help_reply)
-        return
+    await interaction.followup.send(await record_transfer(requester, address, chain, transfer))
 
-    if len(message_sections) < 2:
-        return
 
-    command = message_sections[0]
-    if command in COMMAND_LIST:
-        chain_id = message_sections[1]
-        if chain_id in chains.keys():
-            chain = chains[chain_id]
-            if command == '$faucet_address' and len(message_sections) == 2:
-                await message.reply(f'The `{chain_id}` faucet has address `{chain["faucet_address"]}`')
-            elif command == '$faucet_status' and len(message_sections) == 2:
-                await message.reply(await faucet_status(chain))
-            elif command == '$tx_info' and len(message_sections) == 3:
-                tx_hash = message_sections[2]
-                await message.reply(await transaction_info(tx_hash, chain))
-            elif command == '$balance' and len(message_sections) == 3:
-                address = message_sections[2]
-                await message.reply(await balance_request(address, chain))
-            elif command == '$request' and len(message_sections) == 3:
-                requester = message.author
-                address = message_sections[2]
-                await message.reply(await token_request(requester, address, chain))
+class FaucetBot(discord.Client):
+    """
+    Discord client that only uses slash commands (no Message Content Intent)
+    """
+
+    def __init__(self):
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
+
+    async def setup_hook(self) -> None:
+        synced = await self.tree.sync()
+        logging.info('Synced slash commands globally: %s',
+                     ', '.join(f'/{command.name}' for command in synced))
+
+    async def on_ready(self) -> None:
+        """
+        Gets called when the Discord client logs in
+        """
+        logging.info('Logged into Discord as %s', self.user)
+
+
+def register_commands(tree: app_commands.CommandTree) -> None:
+    """
+    Register the slash commands. Must be called after load_config,
+    since the chain choices come from the config.
+    """
+    if len(chains) == 1:
+        # Single chain: users only need to enter their address
+        only_chain = next(iter(chains.values()))
+
+        @tree.command(name='request',
+                      description=f'Request {only_chain["chain_id"]} testnet tokens')
+        @app_commands.describe(address='Address to send the tokens to')
+        @app_commands.guild_only()
+        async def request_single(interaction: discord.Interaction,
+                                 address: app_commands.Range[str, 1, MAX_ADDRESS_LENGTH]) -> None:
+            await handle_request(interaction, only_chain, address)
     else:
-        logging.info('command not recognized: %s', command)
+        chain_choices = [app_commands.Choice(name=key, value=key) for key in chains]
+
+        @tree.command(name='request', description='Request testnet tokens')
+        @app_commands.describe(chain='Chain to receive tokens on',
+                               address='Address to send the tokens to')
+        @app_commands.choices(chain=chain_choices)
+        @app_commands.guild_only()
+        async def request_multi(interaction: discord.Interaction,
+                                chain: app_commands.Choice[str],
+                                address: app_commands.Range[str, 1, MAX_ADDRESS_LENGTH]) -> None:
+            await handle_request(interaction, chains[chain.value], address)
+
+    help_message = build_help_message()
+
+    @tree.command(name='help', description='How to use the faucet and which chains it supports')
+    @app_commands.guild_only()
+    async def help_command(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(
+            help_message, ephemeral=True, suppress_embeds=True)
+
+    @tree.error
+    async def on_command_error(interaction: discord.Interaction,
+                               error: app_commands.AppCommandError) -> None:
+        logging.error('Command /%s failed: %s',
+                      interaction.command.name if interaction.command else '?', error,
+                      exc_info=error)
+        if interaction.response.is_done():
+            await send_ephemeral_followup(interaction, GENERIC_ERROR_REPLY)
+        else:
+            await interaction.response.send_message(GENERIC_ERROR_REPLY, ephemeral=True)
 
 
 def main() -> None:
@@ -476,8 +420,9 @@ def main() -> None:
     Main entry point for the Discord bot
     """
     load_config()
-    initialize_help_message()
-    client.run(DISCORD_TOKEN)
+    bot = FaucetBot()
+    register_commands(bot.tree)
+    bot.run(DISCORD_TOKEN)
 
 
 if __name__ == '__main__':

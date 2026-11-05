@@ -12,3 +12,6 @@ transactions.csv
 
 # Local configuration
 config.toml
+
+# Faucet key mnemonics
+*.mnemonic

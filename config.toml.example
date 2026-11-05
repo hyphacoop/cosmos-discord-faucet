@@ -5,45 +5,47 @@ transactions_log = "transactions.csv"
 
 [chains]
     [chains.chain-1]
-    binary = "gaiad"
-    # "~" is expanded to the user's home directory. In Docker the bot runs as
-    # root, so this resolves to /root/... and the keyring must be mounted at
-    # <home_folder>/keyring-test (see README).
-    home_folder = "~/.gaia"
     prefix = "cosmos"
     denom = "uatom"
-    node_url = "http://localhost:26657"
+    # gRPC endpoint of the node (enabled by default on port 9090 in app.toml)
+    grpc_url = "grpc+http://localhost:9090"
     chain_id = "test-gaiad-1"
     faucet_address = "cosmos..."
     block_explorer_tx = "https://chain1.explorer.com/tx/"
     daily_cap = "250000000"
     amount_to_send = "1000"
     tx_fees = "1000"
+    # optional, defaults to 200000 (the gaiad CLI default)
+    gas_limit = "200000"
+    # file containing the faucet key's mnemonic; "~" is expanded to the home directory.
+    # The derived address must match faucet_address. Keep this file private (chmod 600).
+    mnemonic_file = "~/.faucet/chain-1.mnemonic"
     description = "My Gaia testnet"
     website = ""
 
     [chains.chain-2]
-    binary = "simd"
-    # "~" is expanded to the user's home directory. In Docker the bot runs as
-    # root, so this resolves to /root/... and the keyring must be mounted at
-    # <home_folder>/keyring-test (see README).
-    home_folder = "~/.simd"
     prefix = "cosmos"
     denom = "stake"
-    node_url = "http://localhost:26658"
+    # gRPC endpoint of the node (enabled by default on port 9090 in app.toml)
+    grpc_url = "grpc+http://localhost:9091"
     chain_id = "test-simd-1"
     faucet_address = "cosmos..."
     block_explorer_tx = "https://chain2.explorer.com/tx/"
     daily_cap = "250000000"
     amount_to_send = "1000"
     tx_fees = "1000"
+    # optional, defaults to 200000 (the gaiad CLI default)
+    gas_limit = "200000"
+    # file containing the faucet key's mnemonic; "~" is expanded to the home directory.
+    # The derived address must match faucet_address. Keep this file private (chmod 600).
+    mnemonic_file = "~/.faucet/chain-2.mnemonic"
     description = "My simd testnet"
     website = ""
 
 [discord]
 bot_token = ""
-# comma separated list of channels
-channels_to_listen = ""
+# Use Server Settings > Integrations in Discord to limit which channels the
+# slash commands can be used in.
 # how often user can request tokens from faucet (seconds)
 # 10800 = 3  hours
 # 86400 = 24 hours
