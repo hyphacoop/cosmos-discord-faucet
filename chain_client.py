@@ -8,6 +8,8 @@ All methods block (cosmpy uses a synchronous gRPC client); call them from
 async code through asyncio.to_thread.
 """
 
+import logging
+import re
 import threading
 from typing import Optional
 
@@ -24,6 +26,10 @@ from cosmpy.crypto.address import Address
 DEFAULT_GAS_LIMIT = 200000  # gaiad CLI default
 # Account addresses are 20 bytes; module/contract/ICA addresses are 32 bytes
 VALID_ADDRESS_LENGTHS = (20, 32)
+# CheckTx error when the signed sequence is not the one the chain expects
+SEQUENCE_MISMATCH_RE = re.compile(r'account sequence mismatch, expected (\d+)')
+
+logger = logging.getLogger(__name__)
 
 
 class ChainError(Exception):
@@ -92,21 +98,43 @@ class ChainClient:
         except Exception as ex:
             raise ChainError(f'balance query failed: {ex}') from ex
 
+    def _broadcast_send(self, recipient: str):
+        """
+        Signs and broadcasts a send with the cached account number and sequence
+        """
+        tx = Transaction()
+        tx.add_message(create_bank_send_msg(
+            self._sender, Address(recipient), self.amount, self.denom))
+        return prepare_and_broadcast_basic_transaction(
+            self.client, tx, self.wallet, account=self._account,
+            fee=TxFee(amount=self.fee, gas_limit=self.gas_limit))
+
     def send(self, recipient: str) -> str:
         """
         Sends amount_to_send to the recipient and returns the tx hash.
         Raises ChainError on failure.
+
+        If the cached sequence is out of step with the chain (the faucet key
+        was used elsewhere), resyncs to the sequence the chain expects and
+        retries once.
         """
         with self._send_lock:
             try:
                 if self._account is None:
                     self._account = self.client.query_account(self._sender)
-                tx = Transaction()
-                tx.add_message(create_bank_send_msg(
-                    self._sender, Address(recipient), self.amount, self.denom))
-                submitted = prepare_and_broadcast_basic_transaction(
-                    self.client, tx, self.wallet, account=self._account,
-                    fee=TxFee(amount=self.fee, gas_limit=self.gas_limit))
+                try:
+                    submitted = self._broadcast_send(recipient)
+                except Exception as ex:  # pylint: disable=broad-except
+                    match = SEQUENCE_MISMATCH_RE.search(str(ex))
+                    if match is None:
+                        raise
+                    expected = int(match.group(1))
+                    logger.warning(
+                        'Account sequence for %s out of step (cached %d, chain '
+                        'expects %d); resyncing and retrying',
+                        self.address, self._account.sequence, expected)
+                    self._account.sequence = expected
+                    submitted = self._broadcast_send(recipient)
             except Exception as ex:
                 # The sequence may be out of step with the chain; re-query next time
                 self._account = None
