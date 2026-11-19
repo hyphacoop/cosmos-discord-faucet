@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed token transfers failing on the first attempt with `account sequence mismatch` when the faucet key is also used outside the bot. The bot now resyncs to the sequence the chain expects and retries once, logging a warning ([#44](https://github.com/hyphacoop/cosmos-discord-faucet/issues/44)).
+
 ## v0.9.0
 
 - [**BREAKING CHANGE**] The bot now uses Discord slash commands and no longer needs the Message Content Intent.
